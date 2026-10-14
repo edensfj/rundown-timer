@@ -2,30 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_config.dart';
-import '../../core/time_formatters.dart';
 import '../../models/countdown_phase.dart';
-import '../../models/countdown_snapshot.dart';
 import '../../state/countdown_provider.dart';
 import 'countdown_display.dart';
-import 'next_activity_banner.dart';
 
-/// Por debajo de este alto, el escenario se pinta en modo compacto: cabecera
-/// reducida y sin pie, para que el reloj conserve todo el espacio posible.
+/// Composición del modo escenario: **solo el reloj**.
 ///
-/// El umbral está por encima del alto de la vista previa del panel —el caso
-/// pequeño habitual— y muy por debajo del de cualquier ventana real en un
-/// proyector.
-const double _compactHeight = 420;
-
-/// Composición visual completa del modo escenario: fondo, destello rojo de
-/// alerta, cabecera, countdown y banner de siguiente actividad.
+/// Sin cabecera, sin barra de progreso y sin pie. En una proyección lo único
+/// que importa son los dígitos, y todo lo demás competía con ellos: la barra
+/// además cambiaba de color según la fase y se leía como una raya suelta.
 ///
-/// Se extrajo a un widget propio para poder reutilizarla tal cual en la **vista
+/// Lo que sí se mantiene es el **destello rojo a pantalla completa** cuando el
+/// tiempo se agota: es la única señal que hay que entender de un vistazo desde
+/// el público.
+///
+/// Se extrajo a un widget propio para poder reutilizarlo tal cual en la **vista
 /// previa del programador**: así lo que ve el operador en su pantalla es
 /// exactamente lo que se está proyectando, sin duplicar el diseño.
-///
-/// Gestiona internamente el parpadeo rojo, de modo que el destello se comporta
-/// igual en la vista completa y en la miniatura.
 class StageView extends ConsumerStatefulWidget {
   const StageView({super.key});
 
@@ -39,6 +32,9 @@ class _StageViewState extends ConsumerState<StageView>
 
   /// 0.0 = fondo negro, 1.0 = fondo rojo.
   late final Animation<double> _alertPulse;
+
+  /// Margen mínimo para que los dígitos no toquen el borde de la pantalla.
+  static const EdgeInsets _margins = EdgeInsets.all(16);
 
   @override
   void initState() {
@@ -90,42 +86,11 @@ class _StageViewState extends ConsumerState<StageView>
             ),
           ),
         ),
-        // Barra de progreso del día, bajo el destello para no competir con él.
-        Positioned.fill(child: _DayProgressBar(snapshot: snapshot)),
-        SafeArea(
+        // El reloj se lleva TODO el espacio: no hay nada más que mostrar.
+        Positioned.fill(
           child: Padding(
-            // Márgenes laterales mínimos: el countdown es lo primero y debe
-            // llegar prácticamente a los bordes. El inferior reserva el hueco
-            // de la barra de controles.
-            padding: const EdgeInsets.fromLTRB(16, 28, 16, 100),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                // Cuando el hueco es pequeño —la vista previa del panel, o una
-                // ventana bajita— la cabecera completa no cabe. Antes se comía
-                // todo el alto, el reloj se quedaba con cero y los dos huecos
-                // de 16 px desbordaban: eso es la banda amarilla que dibuja
-                // Flutter al desbordar. En sitio justo se recorta la cabecera y
-                // se retira el pie.
-                final apretado = constraints.maxHeight < _compactHeight;
-
-                return Column(
-                  children: [
-                    _StageHeader(snapshot: snapshot, compact: apretado),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: CountdownDisplay(
-                        snapshot: snapshot,
-                        alertPulse: _alertPulse,
-                      ),
-                    ),
-                    if (!apretado) ...[
-                      const SizedBox(height: 16),
-                      NextActivityBanner(snapshot: snapshot),
-                    ],
-                  ],
-                );
-              },
-            ),
+            padding: _margins,
+            child: CountdownDisplay(snapshot: snapshot, alertPulse: _alertPulse),
           ),
         ),
       ],
@@ -133,130 +98,7 @@ class _StageViewState extends ConsumerState<StageView>
   }
 }
 
-/// Cabecera compacta: informa, pero sin robarle sitio al countdown.
-///
-/// Con [compact] se queda en lo esencial (etiqueta y título) para que quepa en
-/// huecos pequeños, como la vista previa del panel.
-class _StageHeader extends StatelessWidget {
-  const _StageHeader({required this.snapshot, this.compact = false});
-
-  final CountdownSnapshot snapshot;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final slot = snapshot.current!;
-    final item = slot.item;
-    const muted = Color(0x8CFFFFFF);
-
-    return Column(
-      children: [
-        Text(
-          snapshot.isQuickTimer
-              ? 'CONTADOR RÁPIDO'
-              : snapshot.phase == CountdownPhase.preShow
-                  ? 'PRÓXIMA ACTIVIDAD'
-                  : 'ACTIVIDAD ${snapshot.index + 1} DE ${snapshot.total}',
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: const Color(0x66FFFFFF),
-            letterSpacing: 3,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          item.title,
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.headlineMedium?.copyWith(
-            color: StageColors.white,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        // En sitio justo esta línea se cae: es informativa para el operador,
-        // y el reloj tiene prioridad absoluta sobre ella.
-        if (!compact)
-          Wrap(
-            spacing: 20,
-            runSpacing: 6,
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(
-                '${TimeFormatters.time(slot.startTime)}  ·  '
-                '${TimeFormatters.time(slot.endTime)}  ·  '
-                '${TimeFormatters.humanDuration(slot.plannedDuration)}',
-                style: theme.textTheme.bodyMedium?.copyWith(color: muted),
-              ),
-              if (item.responsible != null)
-                _InlineMeta(
-                  icon: Icons.person_outline_rounded,
-                  text: item.responsible!,
-                ),
-              if (item.location != null)
-                _InlineMeta(icon: Icons.place_outlined, text: item.location!),
-            ],
-          ),
-      ],
-    );
-  }
-}
-
-class _InlineMeta extends StatelessWidget {
-  const _InlineMeta({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    const muted = Color(0x8CFFFFFF);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 16, color: muted),
-        const SizedBox(width: 5),
-        Text(text, style: const TextStyle(color: muted, fontSize: 15)),
-      ],
-    );
-  }
-}
-
-/// Barra de progreso de la actividad actual sobre el ancho de la ventana.
-class _DayProgressBar extends StatelessWidget {
-  const _DayProgressBar({required this.snapshot});
-
-  final CountdownSnapshot snapshot;
-
-  @override
-  Widget build(BuildContext context) {
-    final slot = snapshot.current!;
-    final total = slot.plannedDuration.inMilliseconds;
-    final remaining = snapshot.remaining.inMilliseconds;
-    final elapsed = (total - remaining).clamp(0, total);
-    final value = total <= 0 ? 1.0 : elapsed / total;
-
-    return Align(
-      alignment: Alignment.topCenter,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(999),
-          child: LinearProgressIndicator(
-            value: value.clamp(0.0, 1.0),
-            minHeight: 5,
-            backgroundColor: Colors.white.withValues(alpha: 0.10),
-            valueColor: AlwaysStoppedAnimation<Color>(snapshot.phase.accent),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
+/// Sin actividades no hay reloj: se avisa en el mismo negro de siempre.
 class _NoActivities extends StatelessWidget {
   const _NoActivities();
 

@@ -105,6 +105,29 @@ void main() {
   }
 
   casos.addAll({
+    'itinerario de UNA actividad, en previo (1600x900)': (
+      const Size(1600, 900),
+      CountdownSnapshot(
+        current: ScheduledActivity(
+          item: ActivityItem(
+            id: 'a1',
+            title: 'ytrytry',
+            startTime: DateTime(2026, 10, 14, 17, 0),
+            endTime: DateTime(2026, 10, 14, 17, 30),
+          ),
+          startTime: DateTime(2026, 10, 14, 17, 0),
+          endTime: DateTime(2026, 10, 14, 17, 30),
+          isLast: true,
+          hasExplicitEnd: true,
+        ),
+        next: null,
+        index: 0,
+        total: 1,
+        remaining: const Duration(minutes: 5, seconds: 24),
+        phase: CountdownPhase.preShow,
+        startTime: DateTime(2026, 10, 14, 17, 0),
+      ),
+    ),
     'contador rápido en tiempo excedido (1600x900)': (
       const Size(1600, 900),
       contadorRapido(
