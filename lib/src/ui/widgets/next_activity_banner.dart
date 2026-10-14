@@ -19,21 +19,19 @@ class NextActivityBanner extends StatelessWidget {
     const muted = Color(0x99FFFFFF);
 
     if (next == null) {
+      // En contador rápido no hay una actividad "siguiente" que anunciar, y la
+      // cabecera ya avisa de que es un contador suelto. Antes se repetía aquí
+      // («Contador independiente del itinerario») y solo añadía ruido al
+      // escenario, así que el pie se queda callado.
+      if (snapshot.isQuickTimer) return const SizedBox.shrink();
+
       return Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            snapshot.isQuickTimer
-                ? Icons.timer_outlined
-                : Icons.flag_outlined,
-            color: muted,
-            size: 18,
-          ),
+          const Icon(Icons.flag_outlined, color: muted, size: 18),
           const SizedBox(width: 8),
           Text(
-            snapshot.isQuickTimer
-                ? 'Contador independiente del itinerario'
-                : 'Última actividad del día',
+            'Última actividad del día',
             style: theme.textTheme.bodyMedium?.copyWith(color: muted),
           ),
         ],

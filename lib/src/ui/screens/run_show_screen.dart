@@ -51,6 +51,15 @@ class _RunShowScreenState extends ConsumerState<RunShowScreen>
 
     WakelockPlus.enable();
 
+    // El escenario es una superficie limpia: no admite notificaciones encima.
+    // Los SnackBar del panel se muestran desde el ScaffoldMessenger raíz, que
+    // va POR ENCIMA del Navigator, así que uno pendiente (típicamente
+    // «Actividad eliminada · Deshacer») seguiría viéndose aquí dentro. Se
+    // descartan al entrar, incluidos los que estén en cola.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
+    });
+
     windowManager.addListener(this);
     _enterStage();
 
@@ -62,9 +71,9 @@ class _RunShowScreenState extends ConsumerState<RunShowScreen>
   /// La pantalla se elige desde el dashboard, no aquí: el operador decide antes
   /// de entrar y no tiene que buscar nada con el evento ya proyectándose.
   ///
-  /// Si **no** hay pantalla elegida, no se toma la pantalla completa: se abre
-  /// una ventana con proporción de proyector que simula el escenario, para poder
-  /// seguir programando al lado.
+  /// Si **no** hay pantalla elegida pero hay más de una conectada, se proyecta
+  /// en la otra (ver [resolveStageDisplay]); solo se abre en ventana cuando de
+  /// verdad hay una sola pantalla, porque entonces no hay a dónde proyectar.
   Future<void> _enterStage() async {
     try {
       final position = await windowManager.getPosition();
@@ -74,7 +83,8 @@ class _RunShowScreenState extends ConsumerState<RunShowScreen>
       _restoreBounds = null;
     }
 
-    final target = ref.read(activeDisplayProvider);
+    final target = await resolveStageDisplay(ref, panelBounds: _restoreBounds);
+    if (!mounted) return;
 
     if (target != null) {
       await projectOntoDisplay(target);

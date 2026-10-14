@@ -267,7 +267,7 @@ class _ScreenAction extends ConsumerWidget {
       message: active != null
           ? 'Escenario en esta pantalla: ${active.name ?? 'sin nombre'}'
           : count > 1
-              ? 'Elegir pantalla del escenario · $count detectadas'
+              ? 'Escenario en la otra pantalla · $count detectadas'
               : 'Pantallas conectadas',
       child: Stack(
         clipBehavior: Clip.none,
