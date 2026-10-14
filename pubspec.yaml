@@ -1,0 +1,49 @@
+name: rundown
+description: "Gestión de itinerarios y control de tiempos en vivo (Rundown / Event Timer)."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Estado reactivo
+  flutter_riverpod: ^3.4.3
+
+  # Persistencia local (desktop)
+  hive_ce: ^2.21.0
+  hive_ce_flutter: ^2.4.0
+
+  # Formato de fechas/horas
+  intl: ^0.20.3
+
+  # Modo escenario: pantalla encendida + ventana fullscreen
+  wakelock_plus: ^1.8.1
+  window_manager: ^0.5.2
+
+  # Detección de pantallas conectadas (proyectores, monitores)
+  screen_retriever: ^0.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  fonts:
+    # Tipografía condensada para el countdown: al ser más estrecha que la
+    # fuente por defecto, los mismos dígitos ocupan mucho más alto en pantalla.
+    - family: Oswald
+      fonts:
+        - asset: assets/fonts/Oswald-Variable.ttf

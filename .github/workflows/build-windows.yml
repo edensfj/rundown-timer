@@ -1,0 +1,67 @@
+name: Build Windows 11
+
+# Compila el ejecutable de Windows en un runner `windows-latest`, porque Flutter
+# no permite compilar para Windows desde Linux/macOS (necesita MSVC + Windows SDK).
+#
+# El artefacto es el contenido completo de la carpeta Release: un .exe de Flutter
+# no funciona solo, necesita los DLLs y la carpeta `data/` a su lado.
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: '3.47.6'
+
+jobs:
+  build-windows:
+    name: Compilar para Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar Flutter ${{ env.FLUTTER_VERSION }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Habilitar el soporte de escritorio para Windows
+        run: flutter config --enable-windows-desktop
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      - name: Analizar el código
+        run: flutter analyze
+
+      - name: Compilar (release)
+        run: flutter build windows --release
+
+      - name: Verificar el ejecutable generado
+        shell: pwsh
+        run: |
+          $exe = "build/windows/x64/runner/Release/rundown.exe"
+          if (-not (Test-Path $exe)) {
+            throw "No se generó $exe"
+          }
+          Get-Item $exe | Format-List Name, Length, LastWriteTime
+          Get-ChildItem "build/windows/x64/runner/Release" -Recurse |
+            Select-Object FullName, Length | Format-Table -AutoSize
+
+      - name: Subir el ejecutable como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: rundown-windows-x64
+          # Se sube la carpeta Release completa: exe + DLLs + data/.
+          path: build/windows/x64/runner/Release/
+          if-no-files-found: error
+          retention-days: 30
