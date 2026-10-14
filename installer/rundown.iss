@@ -44,6 +44,9 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 
+; Icono del propio instalador y de la entrada en "Aplicaciones instaladas".
+SetupIconFile=..\assets\icon\rundown-icon.ico
+
 ; Permite actualizar con la app abierta.
 CloseApplications=yes
 RestartApplications=no

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Icono de Rundown Timer.
+
+  Un reloj limpio sobre un cuadrado redondeado índigo. Se eligió la esfera
+  blanca sólida con manecillas oscuras, en lugar de un anillo o un cronómetro
+  detallado, porque tiene que seguir siendo reconocible a 16×16 px, que es el
+  tamaño al que Windows lo dibuja en la barra de tareas y en el explorador.
+
+  Fuente: se renderiza a PNG con rsvg-convert y de ahí se genera el .ico
+  multirresolución. Ver assets/icon/README.md.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+
+  <defs>
+    <linearGradient id="fondo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#4338CA"/>
+    </linearGradient>
+    <linearGradient id="esfera" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#EEF2FF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Cuadrado redondeado de fondo -->
+  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="url(#fondo)"/>
+
+  <!-- Esfera del reloj -->
+  <circle cx="512" cy="512" r="332" fill="url(#esfera)"/>
+
+  <!-- Marcas de las 12, 3, 6 y 9 -->
+  <g fill="#4338CA" opacity="0.55">
+    <rect x="498" y="230" width="28" height="62" rx="14"/>
+    <rect x="498" y="732" width="28" height="62" rx="14"/>
+    <rect x="230" y="498" width="62" height="28" rx="14"/>
+    <rect x="732" y="498" width="62" height="28" rx="14"/>
+  </g>
+
+  <!-- Manecillas: apuntan a las 12 y a las 3 -->
+  <g stroke="#312E81" stroke-width="58" stroke-linecap="round" fill="none">
+    <!-- Horario, hacia las 3 -->
+    <line x1="512" y1="512" x2="686" y2="512"/>
+    <!-- Minutero, hacia las 12 -->
+    <line x1="512" y1="512" x2="512" y2="326"/>
+  </g>
+
+  <!-- Eje central -->
+  <circle cx="512" cy="512" r="44" fill="#312E81"/>
+  <circle cx="512" cy="512" r="18" fill="#FFFFFF"/>
+</svg>
