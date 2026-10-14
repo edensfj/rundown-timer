@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:rundown/src/core/app_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -54,6 +56,29 @@ CountdownSnapshot contadorRapido({
   );
 }
 
+/// El caso del pantallazo: una sola actividad, todavía sin empezar, que es
+/// cuando el pie dice «Última actividad del día».
+CountdownSnapshot unicaActividadEnPrevio() => CountdownSnapshot(
+      current: ScheduledActivity(
+        item: ActivityItem(
+          id: 'a1',
+          title: 'ytrytry',
+          startTime: DateTime(2026, 10, 14, 17, 0),
+          endTime: DateTime(2026, 10, 14, 17, 30),
+        ),
+        startTime: DateTime(2026, 10, 14, 17, 0),
+        endTime: DateTime(2026, 10, 14, 17, 30),
+        isLast: true,
+        hasExplicitEnd: true,
+      ),
+      next: null,
+      index: 0,
+      total: 1,
+      remaining: const Duration(minutes: 5, seconds: 24),
+      phase: CountdownPhase.preShow,
+      startTime: DateTime(2026, 10, 14, 17, 0),
+    );
+
 Future<void> montarEscenario(
   WidgetTester tester,
   CountdownSnapshot snapshot, {
@@ -77,8 +102,17 @@ Future<void> montarEscenario(
 void main() {
   // Igual que hace `main`: sin esto, los formatos de hora revientan al
   // construir la cabecera y el test mediría otra cosa.
+  //
+  // Y se carga la fuente REAL del reloj. En una prueba de widgets las fuentes
+  // propias no se cargan solas: se mide con una tipografía de reemplazo, cuyas
+  // métricas no son las de Oswald. Si el desbordamiento depende de la altura
+  // real de la línea, sin esto no se reproduce nunca.
   setUpAll(() async {
     await initializeDateFormatting('es', null);
+
+    final oswald = FontLoader(AppConfig.countdownFontFamily)
+      ..addFont(rootBundle.load('assets/fonts/Oswald-Variable.ttf'));
+    await oswald.load();
   });
 
   final casos = <String, (Size, CountdownSnapshot)>{};
@@ -101,6 +135,12 @@ void main() {
         remaining: const Duration(seconds: 22),
         phase: CountdownPhase.warning,
       ),
+    );
+    // Y el caso con cabecera completa y pie, que ocupa más alto: es el que
+    // tiene menos sitio libre para el reloj.
+    casos['una actividad, en previo ($etiqueta)'] = (
+      size,
+      unicaActividadEnPrevio(),
     );
   }
 
