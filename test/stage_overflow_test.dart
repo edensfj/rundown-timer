@@ -125,10 +125,8 @@ void main() {
     testWidgets('no desborda: $nombre', (tester) async {
       await montarEscenario(tester, caso.$2, windowSize: caso.$1);
 
-      final error = tester.takeException();
-      if (error != null) {
-        fail('El escenario desborda en «$nombre»:\n$error');
-      }
+      // Si algún widget no cabe, Flutter lo reporta como excepción y la prueba
+      // falla sola, con el widget culpable y los píxeles exactos en el informe.
     });
   });
 }

@@ -9,6 +9,14 @@ import '../../state/countdown_provider.dart';
 import 'countdown_display.dart';
 import 'next_activity_banner.dart';
 
+/// Por debajo de este alto, el escenario se pinta en modo compacto: cabecera
+/// reducida y sin pie, para que el reloj conserve todo el espacio posible.
+///
+/// El umbral está por encima del alto de la vista previa del panel —el caso
+/// pequeño habitual— y muy por debajo del de cualquier ventana real en un
+/// proyector.
+const double _compactHeight = 420;
+
 /// Composición visual completa del modo escenario: fondo, destello rojo de
 /// alerta, cabecera, countdown y banner de siguiente actividad.
 ///
@@ -90,19 +98,33 @@ class _StageViewState extends ConsumerState<StageView>
             // llegar prácticamente a los bordes. El inferior reserva el hueco
             // de la barra de controles.
             padding: const EdgeInsets.fromLTRB(16, 28, 16, 100),
-            child: Column(
-              children: [
-                _StageHeader(snapshot: snapshot),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: CountdownDisplay(
-                    snapshot: snapshot,
-                    alertPulse: _alertPulse,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                NextActivityBanner(snapshot: snapshot),
-              ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // Cuando el hueco es pequeño —la vista previa del panel, o una
+                // ventana bajita— la cabecera completa no cabe. Antes se comía
+                // todo el alto, el reloj se quedaba con cero y los dos huecos
+                // de 16 px desbordaban: eso es la banda amarilla que dibuja
+                // Flutter al desbordar. En sitio justo se recorta la cabecera y
+                // se retira el pie.
+                final apretado = constraints.maxHeight < _compactHeight;
+
+                return Column(
+                  children: [
+                    _StageHeader(snapshot: snapshot, compact: apretado),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: CountdownDisplay(
+                        snapshot: snapshot,
+                        alertPulse: _alertPulse,
+                      ),
+                    ),
+                    if (!apretado) ...[
+                      const SizedBox(height: 16),
+                      NextActivityBanner(snapshot: snapshot),
+                    ],
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -112,10 +134,14 @@ class _StageViewState extends ConsumerState<StageView>
 }
 
 /// Cabecera compacta: informa, pero sin robarle sitio al countdown.
+///
+/// Con [compact] se queda en lo esencial (etiqueta y título) para que quepa en
+/// huecos pequeños, como la vista previa del panel.
 class _StageHeader extends StatelessWidget {
-  const _StageHeader({required this.snapshot});
+  const _StageHeader({required this.snapshot, this.compact = false});
 
   final CountdownSnapshot snapshot;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -150,27 +176,30 @@ class _StageHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 20,
-          runSpacing: 6,
-          alignment: WrapAlignment.center,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(
-              '${TimeFormatters.time(slot.startTime)}  ·  '
-              '${TimeFormatters.time(slot.endTime)}  ·  '
-              '${TimeFormatters.humanDuration(slot.plannedDuration)}',
-              style: theme.textTheme.bodyMedium?.copyWith(color: muted),
-            ),
-            if (item.responsible != null)
-              _InlineMeta(
-                icon: Icons.person_outline_rounded,
-                text: item.responsible!,
+        // En sitio justo esta línea se cae: es informativa para el operador,
+        // y el reloj tiene prioridad absoluta sobre ella.
+        if (!compact)
+          Wrap(
+            spacing: 20,
+            runSpacing: 6,
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                '${TimeFormatters.time(slot.startTime)}  ·  '
+                '${TimeFormatters.time(slot.endTime)}  ·  '
+                '${TimeFormatters.humanDuration(slot.plannedDuration)}',
+                style: theme.textTheme.bodyMedium?.copyWith(color: muted),
               ),
-            if (item.location != null)
-              _InlineMeta(icon: Icons.place_outlined, text: item.location!),
-          ],
-        ),
+              if (item.responsible != null)
+                _InlineMeta(
+                  icon: Icons.person_outline_rounded,
+                  text: item.responsible!,
+                ),
+              if (item.location != null)
+                _InlineMeta(icon: Icons.place_outlined, text: item.location!),
+            ],
+          ),
       ],
     );
   }

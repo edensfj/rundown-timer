@@ -31,6 +31,10 @@ class CountdownDisplay extends StatelessWidget {
   /// Fuente base deliberadamente enorme: `scaleDown` la ajusta al hueco.
   static const double _baseFontSize = 1000;
 
+  /// Alto mínimo para que el subtítulo («Término programado · …») quepa junto a
+  /// los dígitos. Por debajo, se muestra solo el reloj.
+  static const double _minHeightForSubtitle = 56;
+
   @override
   Widget build(BuildContext context) {
     final phase = snapshot.phase;
@@ -38,44 +42,57 @@ class CountdownDisplay extends StatelessWidget {
     // Sin badge de estado a propósito: los dígitos gigantes ya comunican todo.
     // «En curso» o «Tiempo excedido» solo ocupaban pantalla y robaban altura al
     // reloj, que es lo único que importa desde la última fila.
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Expanded(
-          child: AnimatedBuilder(
-            animation: alertPulse,
-            builder: (context, _) => FittedBox(
-              fit: BoxFit.scaleDown,
-              child: phase == CountdownPhase.finished
-                  ? const _FinishedMessage()
-                  : Text(
-                      TimeFormatters.countdown(snapshot.remaining),
-                      maxLines: 1,
-                      style: TextStyle(
-                        fontFamily: AppConfig.countdownFontFamily,
-                        fontSize: _baseFontSize,
-                        height: 1.0,
-                        fontWeight: FontWeight.w700,
-                        color: phase.foreground,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Con muy poco alto el subtítulo no cabe y desbordaría, que Flutter
+        // pinta como una banda amarilla sobre el reloj. Antes que eso, los
+        // dígitos solos: siguen siendo lo importante.
+        final cabeSubtitulo = constraints.maxHeight >= _minHeightForSubtitle;
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Expanded(
+              child: AnimatedBuilder(
+                animation: alertPulse,
+                builder: (context, _) => FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: phase == CountdownPhase.finished
+                      ? const _FinishedMessage()
+                      : Text(
+                          TimeFormatters.countdown(snapshot.remaining),
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontFamily: AppConfig.countdownFontFamily,
+                            fontSize: _baseFontSize,
+                            height: 1.0,
+                            fontWeight: FontWeight.w700,
+                            color: phase.foreground,
+                            fontFeatures: const [
+                              FontFeature.tabularFigures(),
+                            ],
+                          ),
+                        ),
+                ),
+              ),
             ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          _subtitle(snapshot),
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w500,
-            color: phase.foreground.withValues(alpha: 0.7),
-          ),
-        ),
-      ],
+            if (cabeSubtitulo) ...[
+              const SizedBox(height: 10),
+              Text(
+                _subtitle(snapshot),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w500,
+                  color: phase.foreground.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 
