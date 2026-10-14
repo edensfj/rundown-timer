@@ -52,7 +52,7 @@ CloseApplications=yes
 RestartApplications=no
 
 UninstallDisplayName={#AppName}
-UninstallDisplayIcon={app}\{#AppExeName}
+UninstallDisplayIcon={app}\rundown.ico
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
@@ -65,10 +65,19 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; `data\` contiene flutter_assets (con la fuente Oswald) e icudtl.dat.
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+; El .ico se instala como fichero propio y es el que usan Windows y los
+; accesos directos para pintar la entrada de la app.
+;
+; No se apunta al .exe a propósito: Windows cachea el icono por RUTA, así que
+; apuntando siempre al mismo rundown.exe reutilizaba el icono viejo (el logo de
+; Flutter) aunque el binario nuevo ya llevara el reloj. Un fichero con nombre
+; propio estrena entrada y deja de arrastrar la caché.
+Source: "..\assets\icon\rundown-icon.ico"; DestDir: "{app}"; DestName: "rundown.ico"; Flags: ignoreversion
+
 [Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\rundown.ico"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\rundown.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
