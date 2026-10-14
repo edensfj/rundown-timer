@@ -3,8 +3,9 @@ name: Build Windows 11
 # Compila el ejecutable de Windows en un runner `windows-latest`, porque Flutter
 # no permite compilar para Windows desde Linux/macOS (necesita MSVC + Windows SDK).
 #
-# El artefacto es el contenido completo de la carpeta Release: un .exe de Flutter
-# no funciona solo, necesita los DLLs y la carpeta `data/` a su lado.
+# Se generan dos artefactos:
+#   - rundown-setup-<versión>.exe : instalador autocontenido (Inno Setup)
+#   - rundown-windows-x64        : la carpeta Release, para inspección/debug
 
 on:
   push:
@@ -43,6 +44,20 @@ jobs:
       - name: Analizar el código
         run: flutter analyze
 
+      - name: Leer la versión de pubspec.yaml
+        id: version
+        shell: pwsh
+        run: |
+          $line = Select-String -Path pubspec.yaml -Pattern '^version:\s*(\S+)\s*$'
+          if (-not $line) { throw 'No se encontró "version:" en pubspec.yaml' }
+          # "1.0.0+1" -> "1.0.0"
+          $version = $line.Matches[0].Groups[1].Value.Split('+')[0]
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Versión con formato inesperado: $version"
+          }
+          Write-Host "Versión detectada: $version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+
       - name: Compilar (release)
         run: flutter build windows --release
 
@@ -50,18 +65,39 @@ jobs:
         shell: pwsh
         run: |
           $exe = "build/windows/x64/runner/Release/rundown.exe"
-          if (-not (Test-Path $exe)) {
-            throw "No se generó $exe"
-          }
+          if (-not (Test-Path $exe)) { throw "No se generó $exe" }
           Get-Item $exe | Format-List Name, Length, LastWriteTime
-          Get-ChildItem "build/windows/x64/runner/Release" -Recurse |
-            Select-Object FullName, Length | Format-Table -AutoSize
 
-      - name: Subir el ejecutable como artefacto
+      - name: Instalar Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Compilar el instalador
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+          }
+          if (-not $iscc) { throw 'No se encontró ISCC.exe' }
+
+          & $iscc "/DAppVersion=${{ steps.version.outputs.version }}" "installer\rundown.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC falló con código $LASTEXITCODE" }
+
+          Get-ChildItem dist | Format-Table Name, Length -AutoSize
+
+      - name: Subir el instalador
+        uses: actions/upload-artifact@v7
+        with:
+          name: rundown-instalador-windows-x64
+          path: dist/rundown-setup-*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Subir la carpeta Release (sin comprimir, para depurar)
         uses: actions/upload-artifact@v7
         with:
           name: rundown-windows-x64
-          # Se sube la carpeta Release completa: exe + DLLs + data/.
+          # exe + DLLs + data/: hace falta entero para ejecutarlo.
           path: build/windows/x64/runner/Release/
           if-no-files-found: error
           retention-days: 30
