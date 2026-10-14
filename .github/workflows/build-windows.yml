@@ -119,6 +119,28 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "ISCC falló con código $LASTEXITCODE" }
 
           Get-ChildItem dist | Format-Table Name, Length -AutoSize
+          exit 0
+
+      # --- Artifacts: adjuntos temporales, para desarrollo -------------------
+      # Van ANTES de la Release a propósito: si algo falla al publicar, el
+      # instalador ya está a salvo como artifact y no se pierde el build.
+      - name: Adjuntar el instalador (temporal, caduca)
+        uses: actions/upload-artifact@v7
+        with:
+          name: instalador-windows-x64
+          path: dist/rundown-setup-*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Adjuntar los archivos de compilación (solo para depurar)
+        uses: actions/upload-artifact@v7
+        with:
+          name: compilacion-windows-x64-sin-comprimir
+          # Salida cruda de Flutter: rundown.exe + DLLs + data/.
+          # NO se reparte: para el usuario final está el instalador.
+          path: build/windows/x64/runner/Release/
+          if-no-files-found: error
+          retention-days: 30
 
       # --- Release ----------------------------------------------------------
       # El nombre de la etiqueta: si el push ya trae una etiqueta v*, se respeta
@@ -150,14 +172,23 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "${{ steps.tag.outputs.name }}"
+
+          # `gh release view` devuelve 1 si la Release no existe. Ese 1 es una
+          # respuesta válida ("no existe"), no un fallo.
           gh release view $tag --json tagName *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $existe = ($LASTEXITCODE -eq 0)
+
+          if ($existe) {
             Write-Host "Ya existe la Release $tag: no se publica otra vez."
             "value=true" >> $env:GITHUB_OUTPUT
           } else {
             Write-Host "No existe la Release $tag: se publicará."
             "value=false" >> $env:GITHUB_OUTPUT
           }
+
+          # GitHub añade 'exit $LASTEXITCODE' al final de los pasos pwsh. Sin
+          # esto, el 1 de arriba dejaría el paso en rojo aunque esté tratado.
+          exit 0
 
       - name: Publicar la Release
         if: github.event_name != 'pull_request' && steps.exists.outputs.value == 'false'
@@ -183,22 +214,3 @@ jobs:
         if: github.event_name != 'pull_request' && steps.exists.outputs.value == 'true'
         run: |
           Write-Host "::notice title=Release omitida::Ya existía ${{ steps.tag.outputs.name }}. Sube 'version:' en pubspec.yaml para publicar una nueva."
-
-      # --- Artifacts: adjuntos temporales, para desarrollo -------------------
-      - name: Adjuntar el instalador (temporal, caduca)
-        uses: actions/upload-artifact@v7
-        with:
-          name: instalador-windows-x64
-          path: dist/rundown-setup-*.exe
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Adjuntar los archivos de compilación (solo para depurar)
-        uses: actions/upload-artifact@v7
-        with:
-          name: compilacion-windows-x64-sin-comprimir
-          # Salida cruda de Flutter: rundown.exe + DLLs + data/.
-          # NO se reparte: para el usuario final está el instalador.
-          path: build/windows/x64/runner/Release/
-          if-no-files-found: error
-          retention-days: 30

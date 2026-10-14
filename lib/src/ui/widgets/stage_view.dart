@@ -127,9 +127,11 @@ class _StageHeader extends StatelessWidget {
     return Column(
       children: [
         Text(
-          snapshot.phase == CountdownPhase.preShow
-              ? 'PRÓXIMA ACTIVIDAD'
-              : 'ACTIVIDAD ${snapshot.index + 1} DE ${snapshot.total}',
+          snapshot.isQuickTimer
+              ? 'CONTADOR RÁPIDO'
+              : snapshot.phase == CountdownPhase.preShow
+                  ? 'PRÓXIMA ACTIVIDAD'
+                  : 'ACTIVIDAD ${snapshot.index + 1} DE ${snapshot.total}',
           style: theme.textTheme.labelSmall?.copyWith(
             color: const Color(0x66FFFFFF),
             letterSpacing: 3,

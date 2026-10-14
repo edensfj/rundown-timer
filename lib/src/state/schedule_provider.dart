@@ -1,9 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/app_config.dart';
+import '../models/activity_item.dart';
 import '../models/event_day.dart';
 import '../models/scheduled_activity.dart';
 import 'clock_provider.dart';
+import 'quick_timer_provider.dart';
 import 'rundown_provider.dart';
 import 'selected_day_provider.dart';
 
@@ -27,13 +29,41 @@ final activeDayProvider = Provider<EventDay?>((ref) {
 /// Id del día actualmente en edición (o `null` si no hay días).
 final activeDayIdProvider = Provider<String?>((ref) => ref.watch(activeDayProvider)?.id);
 
-/// Cronograma del día activo con las horas de fin ya inferidas.
+/// Identifica **de dónde sale lo que se está proyectando**: el itinerario del
+/// día o un contador suelto.
 ///
-/// No depende del reloj, así que su valor se cachea y solo se recalcula cuando
-/// cambian las actividades o el día.
+/// El estado del escenario observa este valor para reiniciarse cuando la fuente
+/// cambia. Sin esto, al pasar de un contador al itinerario el índice guardado
+/// podría apuntar a una actividad que ya no existe.
+final stageSourceIdProvider = Provider<String?>((ref) {
+  final quick = ref.watch(quickTimerProvider);
+  if (quick != null) return 'quick:${quick.id}';
+  return 'day:${ref.watch(activeDayProvider)?.id}';
+});
+
+/// Cronograma que se está proyectando, con las horas de fin ya inferidas.
+///
+/// Con un contador rápido activo se construye un **cronograma virtual de una
+/// sola actividad**: así todo el motor del escenario (countdown, fases, alerta
+/// roja, pausa, reinicio) funciona igual sin duplicar una línea de lógica.
 final activeScheduleProvider = Provider<List<ScheduledActivity>>((ref) {
+  final quick = ref.watch(quickTimerProvider);
+
+  if (quick != null) {
+    return resolveSchedule([
+      ActivityItem(
+        id: quick.id,
+        title: quick.label,
+        startTime: quick.startedAt,
+        // Con hora de fin explícita, la duración pedida manda.
+        endTime: quick.endsAt,
+      ),
+    ]);
+  }
+
   final day = ref.watch(activeDayProvider);
   if (day == null) return const [];
+
   return resolveSchedule(
     day.activities,
     lastDuration: AppConfig.defaultLastActivityDuration,

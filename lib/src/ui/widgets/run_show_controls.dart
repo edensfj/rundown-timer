@@ -16,6 +16,8 @@ class RunShowControls extends StatelessWidget {
     required this.onRestart,
     required this.onToggleAutomatic,
     required this.onToggleFinished,
+    required this.onSubtractTime,
+    required this.onAddTime,
   });
 
   final CountdownSnapshot snapshot;
@@ -25,6 +27,12 @@ class RunShowControls extends StatelessWidget {
   final VoidCallback onRestart;
   final VoidCallback onToggleAutomatic;
   final VoidCallback onToggleFinished;
+
+  /// Resta un minuto al conteo en curso.
+  final VoidCallback onSubtractTime;
+
+  /// Suma un minuto al conteo en curso.
+  final VoidCallback onAddTime;
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +73,25 @@ class RunShowControls extends StatelessWidget {
             icon: Icons.skip_next_rounded,
             tooltip: 'Actividad siguiente',
             onPressed: onNext,
+          ),
+          Container(
+            width: 1,
+            height: 26,
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            color: foreground.withValues(alpha: 0.2),
+          ),
+          // Ajuste fino del tiempo en vivo. Funciona igual con el itinerario
+          // que con un contador suelto: si algo se alarga, se suma aquí sin
+          // tocar la hora de fin programada.
+          _ControlButton(
+            icon: Icons.remove_rounded,
+            tooltip: 'Quitar 1 minuto',
+            onPressed: onSubtractTime,
+          ),
+          _ControlButton(
+            icon: Icons.add_rounded,
+            tooltip: 'Añadir 1 minuto',
+            onPressed: onAddTime,
           ),
           Container(
             width: 1,

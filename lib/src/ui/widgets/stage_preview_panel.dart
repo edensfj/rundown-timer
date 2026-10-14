@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/time_formatters.dart';
 import '../../models/countdown_phase.dart';
 import '../../state/countdown_provider.dart';
+import '../../state/quick_timer_provider.dart';
 import '../../state/run_show_provider.dart';
 import 'stage_view.dart';
 
@@ -148,12 +149,40 @@ class _PreviewDetails extends ConsumerWidget {
     }
 
     final current = snapshot.current!.item;
+    final quick = ref.watch(quickTimerProvider) != null;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (quick) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Contador rápido activo',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    ref.read(quickTimerProvider.notifier).clear();
+                    ref.read(runShowProvider.notifier).followClock();
+                  },
+                  icon: const Icon(Icons.event_note_rounded, size: 16),
+                  label: const Text('Al itinerario'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+          ],
           Text(
             current.title,
             maxLines: 1,
@@ -164,7 +193,7 @@ class _PreviewDetails extends ConsumerWidget {
           const SizedBox(height: 2),
           Text(
             [
-              'Actividad ${snapshot.index + 1} de ${snapshot.total}',
+              if (!quick) 'Actividad ${snapshot.index + 1} de ${snapshot.total}',
               if (snapshot.next != null)
                 'siguiente ${TimeFormatters.time(snapshot.next!.startTime)}',
             ].join('  ·  '),

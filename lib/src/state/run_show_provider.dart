@@ -7,14 +7,14 @@ import 'schedule_provider.dart';
 
 /// Estado del temporizador del modo escenario.
 ///
-/// Depende de `activeDayProvider`: al cambiar de día el notifier se reconstruye
-/// y el estado vuelve a cero, así que nunca queda apuntando a un índice que ya
-/// no existe.
+/// Depende de `stageSourceIdProvider`: al cambiar de fuente (de día o entre
+/// itinerario y contador) el notifier se reconstruye y el estado vuelve a cero,
+/// así que nunca queda apuntando a un índice que ya no existe.
 class RunShowNotifier extends Notifier<RunShowState> {
   @override
   RunShowState build() {
-    final day = ref.watch(activeDayProvider);
-    return RunShowState(dayId: day?.id);
+    final source = ref.watch(stageSourceIdProvider);
+    return RunShowState(sourceId: source);
   }
 
   List<ScheduledActivity> get _schedule => ref.read(activeScheduleProvider);
@@ -77,6 +77,15 @@ class RunShowNotifier extends Notifier<RunShowState> {
   void finishEvent() => state = state.copyWith(eventFinished: true);
 
   void resumeEvent() => state = state.copyWith(eventFinished: false);
+
+  /// Suma (o resta, con delta negativo) tiempo al conteo en curso.
+  ///
+  /// Funciona desplazando el reloj efectivo, no la hora de fin, así que sirve
+  /// igual para el itinerario y para un contador suelto: si alguien necesita
+  /// dos minutos más, el fin programado no se toca, solo se corre el tiempo.
+  void addTime(Duration delta) {
+    state = state.copyWith(offset: state.offset + delta);
+  }
 
   /// Índice efectivo: el manual si lo hay, si no el que deduce el reloj.
   int _currentIndex() {

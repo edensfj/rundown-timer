@@ -22,10 +22,18 @@ class NextActivityBanner extends StatelessWidget {
       return Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.flag_outlined, color: muted, size: 18),
+          Icon(
+            snapshot.isQuickTimer
+                ? Icons.timer_outlined
+                : Icons.flag_outlined,
+            color: muted,
+            size: 18,
+          ),
           const SizedBox(width: 8),
           Text(
-            'Última actividad del día',
+            snapshot.isQuickTimer
+                ? 'Contador independiente del itinerario'
+                : 'Última actividad del día',
             style: theme.textTheme.bodyMedium?.copyWith(color: muted),
           ),
         ],

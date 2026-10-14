@@ -19,6 +19,7 @@ class CountdownSnapshot {
     this.isPaused = false,
     this.isAutomatic = true,
     this.isFinished = false,
+    this.isQuickTimer = false,
     this.startTime,
   });
 
@@ -33,6 +34,7 @@ class CountdownSnapshot {
         isPaused = false,
         isAutomatic = true,
         isFinished = false,
+        isQuickTimer = false,
         startTime = null;
 
   /// Actividad bajo control. En [CountdownPhase.preShow] es la primera.
@@ -59,6 +61,10 @@ class CountdownSnapshot {
 
   final bool isFinished;
 
+  /// `true` cuando lo que se cuenta es un contador suelto y no una actividad
+  /// del itinerario. Cambia los textos de la cabecera y del pie.
+  final bool isQuickTimer;
+
   /// Hora a la que apunta el countdown: el fin programado en curso, o el
   /// inicio de la primera actividad durante el pre-show.
   final DateTime? startTime;
@@ -80,6 +86,7 @@ class CountdownSnapshot {
           other.isPaused == isPaused &&
           other.isAutomatic == isAutomatic &&
           other.isFinished == isFinished &&
+          other.isQuickTimer == isQuickTimer &&
           other.startTime == startTime;
 
   @override
@@ -93,6 +100,7 @@ class CountdownSnapshot {
         isPaused,
         isAutomatic,
         isFinished,
+        isQuickTimer,
         startTime,
       );
 }

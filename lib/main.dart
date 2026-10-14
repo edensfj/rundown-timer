@@ -16,8 +16,8 @@ Future<void> main() async {
   await initializeDateFormatting('es', null);
 
   // Las cajas se abren antes de correr la app: el repositorio es sincrónico.
+  // La app arranca VACÍA: no se precarga ningún itinerario.
   await initHive();
-  await seedSampleRundownIfNeeded();
 
   // Ventana de escritorio: tamaño inicial, tamaño mínimo y centrado.
   await windowManager.ensureInitialized();

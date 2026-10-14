@@ -20,7 +20,7 @@ class RunShowState {
     this.pausedAt,
     this.offset = Duration.zero,
     this.eventFinished = false,
-    this.dayId,
+    this.sourceId,
   });
 
   /// Índice elegido a mano. `null` significa «seguir el reloj automáticamente».
@@ -35,8 +35,8 @@ class RunShowState {
   /// El usuario cerró el evento.
   final bool eventFinished;
 
-  /// Día al que pertenece este estado; al cambiar de día se reinicia.
-  final String? dayId;
+  /// Fuente a la que pertenece este estado (día o contador); al cambiar se reinicia.
+  final String? sourceId;
 
   bool get isPaused => pausedAt != null;
 
@@ -53,7 +53,7 @@ class RunShowState {
     Object? pausedAt = _unset,
     Duration? offset,
     bool? eventFinished,
-    String? dayId,
+    String? sourceId,
   }) {
     return RunShowState(
       indexOverride:
@@ -61,7 +61,7 @@ class RunShowState {
       pausedAt: identical(pausedAt, _unset) ? this.pausedAt : pausedAt as DateTime?,
       offset: offset ?? this.offset,
       eventFinished: eventFinished ?? this.eventFinished,
-      dayId: dayId ?? this.dayId,
+      sourceId: sourceId ?? this.sourceId,
     );
   }
 
@@ -73,9 +73,9 @@ class RunShowState {
           other.pausedAt == pausedAt &&
           other.offset == offset &&
           other.eventFinished == eventFinished &&
-          other.dayId == dayId;
+          other.sourceId == sourceId;
 
   @override
   int get hashCode =>
-      Object.hash(indexOverride, pausedAt, offset, eventFinished, dayId);
+      Object.hash(indexOverride, pausedAt, offset, eventFinished, sourceId);
 }

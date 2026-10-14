@@ -4,6 +4,7 @@ import '../models/countdown_phase.dart';
 import '../models/countdown_snapshot.dart';
 import '../models/scheduled_activity.dart';
 import 'clock_provider.dart';
+import 'quick_timer_provider.dart';
 import 'run_show_provider.dart';
 import 'schedule_provider.dart';
 
@@ -15,6 +16,7 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
   final now = ref.watch(clockProvider);
   final schedule = ref.watch(activeScheduleProvider);
   final run = ref.watch(runShowProvider);
+  final isQuickTimer = ref.watch(quickTimerProvider) != null;
 
   if (schedule.isEmpty) return const CountdownSnapshot.empty();
 
@@ -37,6 +39,7 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
       remaining: first.startTime.difference(effectiveNow),
       phase: CountdownPhase.preShow,
       isPaused: run.isPaused,
+      isQuickTimer: isQuickTimer,
       startTime: first.startTime,
     );
   } else {
@@ -60,6 +63,7 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
       isPaused: run.isPaused,
       isAutomatic: run.isAutomatic,
       isFinished: true,
+      isQuickTimer: isQuickTimer,
       startTime: current.startTime,
     );
   }
@@ -75,6 +79,7 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
     phase: countdownPhaseFor(remaining),
     isPaused: run.isPaused,
     isAutomatic: run.isAutomatic,
+    isQuickTimer: isQuickTimer,
     startTime: current.startTime,
   );
 });

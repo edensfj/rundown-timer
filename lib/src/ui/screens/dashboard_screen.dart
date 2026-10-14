@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ids.dart';
+import '../../data/sample_rundown.dart';
 import '../../models/activity_item.dart';
 import '../../models/event_day.dart';
 import '../../state/displays_provider.dart';
@@ -12,6 +13,7 @@ import '../widgets/activity_card.dart';
 import '../widgets/activity_form_drawer.dart';
 import '../widgets/day_selector.dart';
 import '../widgets/live_clock_header.dart';
+import '../widgets/quick_timer_dialog.dart';
 import '../widgets/screen_picker_dialog.dart';
 import '../widgets/stage_preview_panel.dart';
 import 'run_show_screen.dart';
@@ -30,6 +32,11 @@ class DashboardScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Rundown'),
         actions: [
+          IconButton(
+            onPressed: () => _addQuickTimer(context, ref),
+            tooltip: 'Contador rápido (fuera del itinerario)',
+            icon: const Icon(Icons.timer_outlined),
+          ),
           IconButton(
             onPressed: () =>
                 ref.read(previewVisibleProvider.notifier).toggle(),
@@ -231,6 +238,13 @@ class DashboardScreen extends ConsumerWidget {
       MaterialPageRoute(builder: (_) => const RunShowScreen()),
     );
   }
+
+  /// Configura un contador suelto y abre el escenario con él.
+  Future<void> _addQuickTimer(BuildContext context, WidgetRef ref) async {
+    final started = await QuickTimerDialog.show(context);
+    if (!started || !context.mounted) return;
+    _openRunShow(context);
+  }
 }
 
 /// Acción de la AppBar para elegir en qué pantalla se proyectará el escenario.
@@ -317,44 +331,76 @@ class _EmptyState extends ConsumerWidget {
     final scheme = theme.colorScheme;
 
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.event_note_rounded, size: 72, color: scheme.outline),
             const SizedBox(height: 20),
-            Text('Aún no hay días', style: theme.textTheme.titleLarge),
+            Text('Sin itinerario todavía', style: theme.textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(
-              'Crea el primer día del evento para empezar a armar su itinerario.',
+              'Crea el primer día del evento, o lanza un contador suelto si '
+              'solo necesitas medir un tiempo.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium
                   ?.copyWith(color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 24),
             SizedBox(
-              width: double.infinity,
+              width: 320,
               child: FilledButton.icon(
-                onPressed: () {
-                  final messenger = ScaffoldMessenger.of(context);
-                  final now = DateTime.now();
-                  ref.read(rundownProvider.notifier).addDay(
-                        name: 'Día 1',
-                        date: DateTime(now.year, now.month, now.day),
-                        id: newId(),
-                      );
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text('Día creado')),
-                  );
-                },
+                onPressed: () => _crearDia(context, ref),
                 icon: const Icon(Icons.add_rounded),
                 label: const Text('Crear día'),
               ),
             ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: 320,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final started = await QuickTimerDialog.show(context);
+                  if (!started || !context.mounted) return;
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const RunShowScreen()),
+                  );
+                },
+                icon: const Icon(Icons.timer_outlined),
+                label: const Text('Contador rápido'),
+              ),
+            ),
+            const SizedBox(height: 28),
+            // Discreto y opcional: la app arranca vacía, pero tener a mano un
+            // itinerario de muestra ayuda a ver el modo escenario funcionando.
+            TextButton.icon(
+              onPressed: () => _cargarEjemplo(context, ref),
+              icon: const Icon(Icons.auto_stories_outlined, size: 18),
+              label: const Text('Cargar itinerario de ejemplo'),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  void _crearDia(BuildContext context, WidgetRef ref) {
+    final messenger = ScaffoldMessenger.of(context);
+    final now = DateTime.now();
+    ref.read(rundownProvider.notifier).addDay(
+          name: 'Día 1',
+          date: DateTime(now.year, now.month, now.day),
+          id: newId(),
+        );
+    messenger.showSnackBar(const SnackBar(content: Text('Día creado')));
+  }
+
+  Future<void> _cargarEjemplo(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    await ref.read(rundownProvider.notifier).loadDays(buildSampleRundown());
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Itinerario de ejemplo cargado')),
     );
   }
 }

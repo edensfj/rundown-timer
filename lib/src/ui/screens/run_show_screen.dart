@@ -172,6 +172,11 @@ class _RunShowScreenState extends ConsumerState<RunShowScreen>
     _keepControlsVisible();
   }
 
+  void _addTime(Duration delta) {
+    _run.addTime(delta);
+    _keepControlsVisible();
+  }
+
   void _toggleFinished() {
     if (ref.read(countdownProvider).isFinished) {
       _run.resumeEvent();
@@ -272,6 +277,8 @@ class _RunShowScreenState extends ConsumerState<RunShowScreen>
                   onNext: _next,
                   onTogglePause: _togglePause,
                   onRestart: _restart,
+                  onSubtractTime: () => _addTime(const Duration(minutes: -1)),
+                  onAddTime: () => _addTime(const Duration(minutes: 1)),
                   onToggleAutomatic: () {
                     _run.followClock();
                     _keepControlsVisible();

@@ -65,6 +65,16 @@ class RundownNotifier extends AsyncNotifier<List<EventDay>> {
     await _commit(next);
   }
 
+  /// Carga un conjunto de días de golpe, reemplazando lo que hubiera.
+  ///
+  /// Lo usa el botón «cargar itinerario de ejemplo» del estado vacío.
+  Future<void> loadDays(List<EventDay> days) async {
+    await _commit(days);
+    ref.read(selectedDayProvider.notifier).select(
+          days.isEmpty ? null : days.first.id,
+        );
+  }
+
   List<EventDay> get _days => state.value ?? const [];
 
   String? get selectedDayId => ref.read(selectedDayProvider);
