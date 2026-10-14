@@ -2,7 +2,7 @@ name: rundown
 description: "Gestión de itinerarios y control de tiempos en vivo (Rundown / Event Timer)."
 publish_to: 'none'
 
-version: 1.1.1+4
+version: 1.2.0+5
 
 environment:
   sdk: ^3.13.5
@@ -25,9 +25,12 @@ dependencies:
   # Formato de fechas/horas
   intl: ^0.20.3
 
-  # Modo escenario: pantalla encendida + ventana fullscreen
+  # Modo escenario: pantalla encendida + control de ventana
   wakelock_plus: ^1.8.1
   window_manager: ^0.5.2
+
+  # El escenario se abre en su PROPIA ventana, para no tapar el panel.
+  desktop_multi_window: ^0.3.1
 
   # Detección de pantallas conectadas (proyectores, monitores)
   screen_retriever: ^0.2.2

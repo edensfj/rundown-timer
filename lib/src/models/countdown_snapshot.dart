@@ -73,6 +73,61 @@ class CountdownSnapshot {
 
   bool get isLast => next == null;
 
+  /// Empaqueta la instantánea para enviarla a la ventana del escenario.
+  ///
+  /// Cada ventana de Flutter tiene su propio motor y no comparten memoria, así
+  /// que lo que se ve proyectado tiene que viajar como datos. Es lo único que
+  /// cruza entre las dos ventanas.
+  Map<String, dynamic> toJson() => {
+        'current': current?.toJson(),
+        'next': next?.toJson(),
+        'index': index,
+        'total': total,
+        'remainingMs': remaining.inMilliseconds,
+        'phase': phase.name,
+        'isPaused': isPaused,
+        'isAutomatic': isAutomatic,
+        'isFinished': isFinished,
+        'isQuickTimer': isQuickTimer,
+        'startTime': startTime?.toIso8601String(),
+      };
+
+  factory CountdownSnapshot.fromJson(Map<dynamic, dynamic> json) =>
+      CountdownSnapshot(
+        current: _readActivity(json['current']),
+        next: _readActivity(json['next']),
+        index: (json['index'] as num?)?.toInt() ?? 0,
+        total: (json['total'] as num?)?.toInt() ?? 0,
+        remaining: Duration(
+          milliseconds: (json['remainingMs'] as num?)?.toInt() ?? 0,
+        ),
+        phase: _readPhase(json['phase']),
+        isPaused: json['isPaused'] as bool? ?? false,
+        isAutomatic: json['isAutomatic'] as bool? ?? true,
+        isFinished: json['isFinished'] as bool? ?? false,
+        isQuickTimer: json['isQuickTimer'] as bool? ?? false,
+        startTime: _readDate(json['startTime']),
+      );
+
+  static ScheduledActivity? _readActivity(Object? value) {
+    if (value is! Map) return null;
+    return ScheduledActivity.fromJson(value);
+  }
+
+  static DateTime? _readDate(Object? value) {
+    if (value == null) return null;
+    return DateTime.tryParse(value.toString());
+  }
+
+  /// Una fase desconocida (versiones distintas de la app) no puede tumbar el
+  /// reloj en mitad de un evento: se cae al estado previo al inicio.
+  static CountdownPhase _readPhase(Object? value) {
+    for (final phase in CountdownPhase.values) {
+      if (phase.name == value) return phase;
+    }
+    return CountdownPhase.preShow;
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

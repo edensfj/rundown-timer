@@ -17,7 +17,7 @@ import '../widgets/quick_timer_dialog.dart';
 import '../widgets/screen_picker_dialog.dart';
 import '../widgets/stage_preview_panel.dart';
 import '../widgets/templates_dialog.dart';
-import 'run_show_screen.dart';
+import '../../window/stage_window_controller.dart';
 
 /// Vista principal: reloj en vivo, selector de día y lista de actividades.
 class DashboardScreen extends ConsumerWidget {
@@ -116,7 +116,7 @@ class DashboardScreen extends ConsumerWidget {
                 ),
               ),
               child: StagePreviewPanel(
-                onOpenFullscreen: () => _openRunShow(context),
+                onOpenFullscreen: () => _toggleStage(context, ref),
               ),
             ),
         ],
@@ -125,11 +125,31 @@ class DashboardScreen extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          FloatingActionButton.extended(
-            heroTag: 'runShow',
-            onPressed: schedule.isEmpty ? null : () => _openRunShow(context),
-            icon: const Icon(Icons.slideshow_rounded),
-            label: const Text('Modo Escenario'),
+          Builder(
+            builder: (context) {
+              final stage = ref.watch(stageWindowProvider);
+              final abierto = stage.isOpen;
+
+              return FloatingActionButton.extended(
+                heroTag: 'runShow',
+                onPressed: schedule.isEmpty
+                    ? null
+                    : () => _toggleStage(context, ref),
+                icon: Icon(
+                  abierto
+                      ? Icons.stop_circle_outlined
+                      : Icons.slideshow_rounded,
+                ),
+                label: Text(abierto ? 'Cerrar escenario' : 'Abrir escenario'),
+                // Abierto, el botón avisa de dónde está saliendo el reloj.
+                backgroundColor: abierto
+                    ? Theme.of(context).colorScheme.errorContainer
+                    : null,
+                foregroundColor: abierto
+                    ? Theme.of(context).colorScheme.onErrorContainer
+                    : null,
+              );
+            },
           ),
           const SizedBox(height: 12),
           FloatingActionButton(
@@ -239,18 +259,43 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  void _openRunShow(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RunShowScreen()),
-    );
+  /// Abre o cierra la ventana del escenario.
+  ///
+  /// Fíjate en que **no navega**: el reloj vive en su propia ventana y el panel
+  /// se queda tal cual, para poder seguir programando mientras se proyecta.
+  Future<void> _toggleStage(BuildContext context, WidgetRef ref) async {
+    if (ref.read(stageWindowProvider).isOpen) {
+      await ref.read(stageWindowProvider.notifier).close();
+      return;
+    }
+    await _openStage(context, ref);
   }
+
+  Future<void> _openStage(BuildContext context, WidgetRef ref) =>
+      openStageWindow(context, ref);
 
   /// Configura un contador suelto y abre el escenario con él.
   Future<void> _addQuickTimer(BuildContext context, WidgetRef ref) async {
     final started = await QuickTimerDialog.show(context);
     if (!started || !context.mounted) return;
-    _openRunShow(context);
+    await _openStage(context, ref);
   }
+}
+
+/// Abre la ventana del escenario y avisa por pantalla si no se pudo.
+///
+/// Vive fuera de [DashboardScreen] porque también la usa el estado vacío.
+Future<void> openStageWindow(BuildContext context, WidgetRef ref) async {
+  final messenger = ScaffoldMessenger.of(context);
+
+  await ref.read(stageWindowProvider.notifier).open();
+
+  final status = ref.read(stageWindowProvider);
+  if (!status.hasError) return;
+
+  messenger.showSnackBar(
+    SnackBar(content: Text('No se pudo abrir el escenario: ${status.error}')),
+  );
 }
 
 /// Acción de la AppBar para elegir en qué pantalla se proyectará el escenario.
@@ -369,9 +414,7 @@ class _EmptyState extends ConsumerWidget {
                 onPressed: () async {
                   final started = await QuickTimerDialog.show(context);
                   if (!started || !context.mounted) return;
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const RunShowScreen()),
-                  );
+                  await openStageWindow(context, ref);
                 },
                 icon: const Icon(Icons.timer_outlined),
                 label: const Text('Contador rápido'),

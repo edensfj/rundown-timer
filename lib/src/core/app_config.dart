@@ -31,5 +31,9 @@ class AppConfig {
   /// externa elegida. Proporción 16:9, igual que un proyector.
   static const Size stageWindowSize = Size(1600, 900);
 
+  /// Título de la ventana del escenario, para distinguirla en la barra de
+  /// tareas de la del panel.
+  static const String stageWindowTitle = 'Rundown · Escenario';
+
   static const String appTitle = 'Rundown · Timer';
 }

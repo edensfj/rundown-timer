@@ -42,6 +42,27 @@ class ScheduledActivity {
     return ActivityStatus.past;
   }
 
+  /// Serializa la actividad ya resuelta, para poder enviarla a la ventana del
+  /// escenario. [plannedDuration] no se guarda porque se deduce de las horas.
+  Map<String, dynamic> toJson() => {
+        'item': item.toJson(),
+        'startTime': startTime.toIso8601String(),
+        'endTime': endTime.toIso8601String(),
+        'isLast': isLast,
+        'hasExplicitEnd': hasExplicitEnd,
+      };
+
+  factory ScheduledActivity.fromJson(Map<dynamic, dynamic> json) =>
+      ScheduledActivity(
+        item: ActivityItem.fromJson(
+          (json['item'] as Map).cast<dynamic, dynamic>(),
+        ),
+        startTime: DateTime.parse(json['startTime'] as String),
+        endTime: DateTime.parse(json['endTime'] as String),
+        isLast: json['isLast'] as bool? ?? false,
+        hasExplicitEnd: json['hasExplicitEnd'] as bool? ?? false,
+      );
+
   /// Posición de la actividad dentro del cronograma.
   int indexOf(List<ScheduledActivity> schedule) =>
       schedule.indexWhere((s) => s.item.id == item.id);
