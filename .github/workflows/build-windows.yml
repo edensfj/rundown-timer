@@ -4,24 +4,32 @@ name: Build Windows 11
 # permite compilar para Windows desde Linux/macOS (necesita MSVC + Windows SDK).
 #
 # ---------------------------------------------------------------------------
-# OJO CON LOS NOMBRES: aquí aparecen tres cosas distintas que se llaman parecido
+# Publicación de Releases
+#
+# El flujo normal es: subes `version:` en pubspec.yaml, haces push a main, y el
+# CI publica la Release solo. La etiqueta (v1.0.0) la crea el propio workflow,
+# no hace falta crearla a mano.
+#
+# Es idempotente: si ya existe una Release con esa versión, NO se publica otra
+# vez. Así que puedes empujar a main mil veces con la misma versión y no pasa
+# nada; solo se publica cuando cambias el número.
+#
+# También funciona si prefieres mandar: empujar una etiqueta v* publica con ese
+# nombre, tenga o no que ver con pubspec.yaml.
+# ---------------------------------------------------------------------------
+# OJO CON LOS NOMBRES: aparecen tres cosas que se llaman parecido
 #
 # 1. build/windows/x64/runner/Release/
-#    Es la carpeta de SALIDA DE FLUTTER. "Release" aquí significa "compilación
-#    optimizada", en oposición a "Debug". No tiene NADA que ver con GitHub.
+#    Carpeta de SALIDA DE FLUTTER. "Release" = compilación optimizada, frente a
+#    "Debug". No tiene nada que ver con GitHub.
 #
 # 2. Artifact de Actions (actions/upload-artifact)
-#    Un adjunto TEMPORAL del run. Aparece en la pestaña Actions, dentro de la
-#    ejecución concreta. Se descarga solo con la sesión de GitHub iniciada, se
-#    guarda comprimido y CADUCA. Sirve para desarrollo/pruebas, no para repartir.
+#    Adjunto TEMPORAL del run: aparece en la pestaña Actions, requiere sesión
+#    para descargarlo y CADUCA. Para probar, no para repartir.
 #
 # 3. GitHub Release (softprops/action-gh-release)
-#    Una publicación PERMANENTE y versionada, con etiqueta (p. ej. v1.0.0), que
-#    aparece en la sección "Releases" del repo y da una URL pública estable.
-#    ES LO QUE SE REPARTE A LOS USUARIOS.
-#
-# Por eso: al empujar a main solo se generan artifacts (para probar). Al empujar
-# una etiqueta v* se genera además una Release con el instalador adjunto.
+#    Publicación PERMANENTE y versionada, con URL estable en la pestaña
+#    Releases. ES LO QUE SE REPARTE.
 # ---------------------------------------------------------------------------
 
 on:
@@ -35,13 +43,19 @@ on:
 env:
   FLUTTER_VERSION: '3.47.6'
 
+# Evita que dos ejecuciones del mismo ref se pisen (era lo que cancelaba runs).
+# Las etiquetas nunca se cancelan: una Release a medias sería peor que esperar.
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
   build-windows:
     name: Compilar para Windows x64
     runs-on: windows-latest
     timeout-minutes: 45
 
-    # Necesario para que el token pueda crear la Release.
+    # Necesario para que el token pueda crear la Release y su etiqueta.
     permissions:
       contents: write
 
@@ -76,7 +90,7 @@ jobs:
           if ($version -notmatch '^\d+\.\d+\.\d+$') {
             throw "Versión con formato inesperado: $version"
           }
-          Write-Host "Versión detectada: $version"
+          Write-Host "Versión de pubspec.yaml: $version"
           "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Compilar (release)
@@ -106,12 +120,53 @@ jobs:
 
           Get-ChildItem dist | Format-Table Name, Length -AutoSize
 
-      # --- Release: solo al empujar una etiqueta v* -------------------------
-      - name: Publicar la Release con el instalador
-        if: startsWith(github.ref, 'refs/tags/v')
+      # --- Release ----------------------------------------------------------
+      # El nombre de la etiqueta: si el push ya trae una etiqueta v*, se respeta
+      # esa; si no, se deduce de pubspec.yaml.
+      - name: Determinar la etiqueta de la Release
+        id: tag
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          $ref     = "${{ github.ref }}"
+          $version = "${{ steps.version.outputs.version }}"
+
+          if ($ref -like 'refs/tags/*') {
+            $tag = $ref -replace '^refs/tags/', ''
+            if ($tag -ne "v$version") {
+              Write-Warning "La etiqueta ($tag) no coincide con pubspec.yaml (v$version). Se publica como $tag."
+            }
+          } else {
+            $tag = "v$version"
+          }
+          Write-Host "Etiqueta de la Release: $tag"
+          "name=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: ¿Ya existe una Release con esta etiqueta?
+        id: exists
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.tag.outputs.name }}"
+          gh release view $tag --json tagName *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Ya existe la Release $tag: no se publica otra vez."
+            "value=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "No existe la Release $tag: se publicará."
+            "value=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Publicar la Release
+        if: github.event_name != 'pull_request' && steps.exists.outputs.value == 'false'
         uses: softprops/action-gh-release@v3
         with:
-          name: Rundown Timer ${{ github.ref_name }}
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: Rundown Timer ${{ steps.tag.outputs.name }}
+          # Si la etiqueta no existe, se crea apuntando a este commit.
+          target_commitish: ${{ github.sha }}
           files: dist/rundown-setup-*.exe
           generate_release_notes: true
           body: |
@@ -124,7 +179,12 @@ jobs:
             mostrará un aviso la primera vez. Elige *Más información* →
             *Ejecutar de todas formas*.
 
-      # --- Artifacts: adjuntos temporales del run, para desarrollo -----------
+      - name: Avisar de que la versión ya estaba publicada
+        if: github.event_name != 'pull_request' && steps.exists.outputs.value == 'true'
+        run: |
+          Write-Host "::notice title=Release omitida::Ya existía ${{ steps.tag.outputs.name }}. Sube 'version:' en pubspec.yaml para publicar una nueva."
+
+      # --- Artifacts: adjuntos temporales, para desarrollo -------------------
       - name: Adjuntar el instalador (temporal, caduca)
         uses: actions/upload-artifact@v7
         with:
