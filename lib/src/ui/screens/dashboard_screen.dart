@@ -67,7 +67,7 @@ class DashboardScreen extends ConsumerWidget {
                 else
                   DaySelector(
                     onAddDay: () => _createDay(context, ref),
-                    onEditDay: (EventDay value) => _editDay(context, ref, value),
+
                   ),
                 Expanded(
                   child: day == null
@@ -186,17 +186,6 @@ class DashboardScreen extends ConsumerWidget {
         );
 
     messenger.showSnackBar(SnackBar(content: Text('Día «$name» creado')));
-  }
-
-  Future<void> _editDay(BuildContext context, WidgetRef ref, EventDay day) async {
-    final name = await promptForDayName(
-      context,
-      date: day.date,
-      initialValue: day.name,
-      title: 'Renombrar día',
-    );
-    if (name == null || !context.mounted) return;
-    await ref.read(rundownProvider.notifier).renameDay(day.id, name);
   }
 
   /// Abre el formulario en el drawer lateral y aplica el resultado.

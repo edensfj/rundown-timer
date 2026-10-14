@@ -8,15 +8,16 @@ import '../../state/schedule_provider.dart';
 import '../../state/selected_day_provider.dart';
 
 /// Selector horizontal de días del evento, con opción de crear uno nuevo.
+///
+/// El **toque** selecciona el día; la **pulsación larga** abre su menú
+/// (renombrar o eliminar), para no meter más botones en una ficha tan pequeña.
 class DaySelector extends ConsumerWidget {
   const DaySelector({
     super.key,
     required this.onAddDay,
-    required this.onEditDay,
   });
 
   final VoidCallback onAddDay;
-  final ValueChanged<EventDay> onEditDay;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -39,11 +40,97 @@ class DaySelector extends ConsumerWidget {
             day: day,
             selected: day.id == activeDay,
             onTap: () => ref.read(selectedDayProvider.notifier).select(day.id),
-            onLongPress: () => onEditDay(day),
+            onLongPress: () => _dayMenu(context, ref, day),
           );
         },
       ),
     );
+  }
+}
+
+/// Acciones disponibles sobre un día.
+enum _DayAction { rename, delete }
+
+/// Menú de un día: renombrar o eliminar.
+Future<void> _dayMenu(BuildContext context, WidgetRef ref, EventDay day) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final notifier = ref.read(rundownProvider.notifier);
+
+  final action = await showModalBottomSheet<_DayAction>(
+    context: context,
+    builder: (sheet) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: Text(
+              day.name,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text(
+              '${day.activities.length} '
+              '${day.activities.length == 1 ? 'actividad' : 'actividades'}',
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('Renombrar'),
+            onTap: () => Navigator.of(sheet).pop(_DayAction.rename),
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline_rounded),
+            title: const Text('Eliminar el día'),
+            onTap: () => Navigator.of(sheet).pop(_DayAction.delete),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  if (action == null || !context.mounted) return;
+
+  switch (action) {
+    case _DayAction.rename:
+      final name = await promptForDayName(
+        context,
+        date: day.date,
+        initialValue: day.name,
+        title: 'Renombrar día',
+      );
+      if (name == null) return;
+      await notifier.renameDay(day.id, name);
+
+    case _DayAction.delete:
+      // Borrar el día se lleva por delante sus actividades, así que se avisa
+      // de cuántas son antes de hacerlo.
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialog) => AlertDialog(
+          title: const Text('Eliminar el día'),
+          content: Text(
+            '¿Eliminar «${day.name}» y sus ${day.activities.length} '
+            '${day.activities.length == 1 ? 'actividad' : 'actividades'}? '
+            'No se puede deshacer.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialog).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialog).pop(true),
+              child: const Text('Eliminar'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+      await notifier.deleteDay(day.id);
+      messenger.showSnackBar(
+        SnackBar(content: Text('«${day.name}» eliminado')),
+      );
   }
 }
 
