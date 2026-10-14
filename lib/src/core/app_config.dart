@@ -35,5 +35,13 @@ class AppConfig {
   /// tareas de la del panel.
   static const String stageWindowTitle = 'Rundown · Escenario';
 
+  /// Variable de entorno con la que el panel lanza el escenario **en su propio
+  /// proceso**, con la geometría codificada dentro.
+  ///
+  /// Se usa donde no se puede abrir una segunda ventana en el mismo proceso
+  /// (Linux: ver `stageSecondWindowProvider`) pero sí una segunda instancia de
+  /// la app. El que la encuentre definida arranca como escenario y no como panel.
+  static const String stageEnvKey = 'RUNDOWN_STAGE';
+
   static const String appTitle = 'Rundown · Timer';
 }

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'src/app.dart';
+import 'src/core/app_config.dart';
 import 'src/data/hive_boxes.dart';
 import 'src/window/stage_window.dart';
 
@@ -25,6 +28,18 @@ Future<void> main() async {
 
   if (stageArgs != null) {
     await runStageWindow(controller, stageArgs);
+    return;
+  }
+
+  // Y en Linux, donde el escenario es una segunda **instancia** de la app en vez
+  // de una segunda ventana, lo dice la variable de entorno con la que el panel
+  // la lanza.
+  final enProceso = StageWindowArgs.tryDecode(
+    Platform.environment[AppConfig.stageEnvKey] ?? '',
+  );
+
+  if (enProceso != null) {
+    await runStageProcess(enProceso);
     return;
   }
 

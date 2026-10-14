@@ -9,7 +9,15 @@ import 'package:rundown/src/models/countdown_phase.dart';
 import 'package:rundown/src/models/countdown_snapshot.dart';
 import 'package:rundown/src/models/scheduled_activity.dart';
 import 'package:rundown/src/state/countdown_provider.dart';
+import 'package:rundown/src/ui/theme.dart';
 import 'package:rundown/src/ui/widgets/stage_view.dart';
+
+/// Escala de texto con la que se prueban los tamaños.
+///
+/// En Windows al 125 % —lo más común— todo el texto crece un 25 %, y es la
+/// diferencia que hacía que el desbordamiento no apareciera en las pruebas y sí
+/// en la app de verdad.
+const double _textScale = 1.3;
 
 /// Cuando un widget no cabe, Flutter dibuja una banda amarilla en el borde que
 /// se desborda. Eso es exactamente lo que se veía en el escenario: una barra
@@ -88,11 +96,21 @@ Future<void> montarEscenario(
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
+  // La escala de texto del sistema: en Windows al 125 % —lo más común— todo el
+  // texto crece un 25 %. Es la diferencia que hacía que el desbordamiento no
+  // apareciera en las pruebas y sí en la app de verdad.
+  tester.platformDispatcher.textScaleFactorTestValue = _textScale;
+  addTearDown(tester.platformDispatcher.clearAllTestValues);
+
   await tester.pumpWidget(
     ProviderScope(
       overrides: [countdownProvider.overrideWith((ref) => snapshot)],
-      child: const MaterialApp(
-        home: ColoredBox(color: Colors.black, child: StageView()),
+      child: MaterialApp(
+        // El tema de verdad, no el de por defecto: los tamaños de la cabecera
+        // salen de `textTheme`, así que sin esto se mide un alto que no es el
+        // que tiene la app y un desbordamiento real pasa desapercibido.
+        theme: buildAppTheme(),
+        home: const ColoredBox(color: Colors.black, child: StageView()),
       ),
     ),
   );
