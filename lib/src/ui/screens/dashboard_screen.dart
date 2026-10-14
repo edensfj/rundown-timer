@@ -16,6 +16,7 @@ import '../widgets/live_clock_header.dart';
 import '../widgets/quick_timer_dialog.dart';
 import '../widgets/screen_picker_dialog.dart';
 import '../widgets/stage_preview_panel.dart';
+import '../widgets/templates_dialog.dart';
 import 'run_show_screen.dart';
 
 /// Vista principal: reloj en vivo, selector de día y lista de actividades.
@@ -32,6 +33,11 @@ class DashboardScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Rundown'),
         actions: [
+          IconButton(
+            onPressed: () => TemplatesDialog.show(context, day: day),
+            tooltip: 'Plantillas reutilizables',
+            icon: const Icon(Icons.copy_all_outlined),
+          ),
           IconButton(
             onPressed: () => _addQuickTimer(context, ref),
             tooltip: 'Contador rápido (fuera del itinerario)',
@@ -374,10 +380,21 @@ class _EmptyState extends ConsumerWidget {
             const SizedBox(height: 28),
             // Discreto y opcional: la app arranca vacía, pero tener a mano un
             // itinerario de muestra ayuda a ver el modo escenario funcionando.
-            TextButton.icon(
-              onPressed: () => _cargarEjemplo(context, ref),
-              icon: const Icon(Icons.auto_stories_outlined, size: 18),
-              label: const Text('Cargar itinerario de ejemplo'),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton.icon(
+                  onPressed: () => TemplatesDialog.show(context),
+                  icon: const Icon(Icons.copy_all_outlined, size: 18),
+                  label: const Text('Plantillas'),
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: () => _cargarEjemplo(context, ref),
+                  icon: const Icon(Icons.auto_stories_outlined, size: 18),
+                  label: const Text('Itinerario de ejemplo'),
+                ),
+              ],
             ),
           ],
         ),

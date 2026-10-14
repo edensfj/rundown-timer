@@ -3,6 +3,9 @@ import 'package:hive_ce_flutter/hive_flutter.dart';
 /// Box con un registro por día del evento, indexado por su id.
 const String daysBoxName = 'rundown_days';
 
+/// Box con un registro por plantilla reutilizable, indexado por su id.
+const String templatesBoxName = 'rundown_templates';
+
 /// Box con preferencias simples (por ahora, el día seleccionado).
 const String metaBoxName = 'rundown_meta';
 
@@ -19,6 +22,7 @@ Future<void> initHive() async {
   await Hive.initFlutter('rundown');
   await Future.wait([
     Hive.openBox<Map>(daysBoxName),
+    Hive.openBox<Map>(templatesBoxName),
     Hive.openBox<dynamic>(metaBoxName),
   ]);
 }

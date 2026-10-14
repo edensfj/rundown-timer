@@ -47,6 +47,22 @@ class RundownNotifier extends AsyncNotifier<List<EventDay>> {
     );
   }
 
+  /// Añade varias actividades de golpe, típicamente al aplicar una plantilla.
+  Future<void> addActivities(String dayId, List<ActivityItem> items) async {
+    if (items.isEmpty) return;
+
+    await _commit(
+      _days.map((day) {
+        if (day.id != dayId) return day;
+        var next = day;
+        for (final item in items) {
+          next = next.upsertActivity(item);
+        }
+        return next;
+      }).toList(),
+    );
+  }
+
   Future<void> deleteActivity(String dayId, String activityId) async {
     await _commit(
       _days.map((d) => d.id == dayId ? d.removeActivity(activityId) : d).toList(),

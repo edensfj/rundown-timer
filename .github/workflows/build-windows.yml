@@ -79,6 +79,9 @@ jobs:
       - name: Analizar el código
         run: flutter analyze
 
+      - name: Ejecutar las pruebas
+        run: flutter test
+
       - name: Leer la versión de pubspec.yaml
         id: version
         shell: pwsh
@@ -179,10 +182,10 @@ jobs:
           $existe = ($LASTEXITCODE -eq 0)
 
           if ($existe) {
-            Write-Host "Ya existe la Release $tag: no se publica otra vez."
+            Write-Host "Ya existe la Release ${tag}: no se publica otra vez."
             "value=true" >> $env:GITHUB_OUTPUT
           } else {
-            Write-Host "No existe la Release $tag: se publicará."
+            Write-Host "No existe la Release ${tag}: se publicará."
             "value=false" >> $env:GITHUB_OUTPUT
           }
 

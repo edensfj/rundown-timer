@@ -49,3 +49,6 @@ app.*.map.json
 
 # Salida del instalador de Inno Setup
 /dist/
+
+# Metadatos de la herramienta de desarrollo, no del proyecto
+/.opencode/

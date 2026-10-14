@@ -2,14 +2,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 
 import '../models/event_day.dart';
+import '../models/rundown_template.dart';
 import 'hive_boxes.dart';
 
 /// Acceso a la persistencia. Los boxes ya están abiertos por [initHive], así
 /// que todas las operaciones son síncronas salvo la escritura explícita.
 class RundownRepository {
-  const RundownRepository(this._days, this._meta);
+  const RundownRepository(this._days, this._templates, this._meta);
 
   final Box<Map> _days;
+  final Box<Map> _templates;
   final Box<dynamic> _meta;
 
   List<EventDay> loadDays() {
@@ -60,6 +62,21 @@ class RundownRepository {
       await _meta.put(selectedDisplayKey, id);
     }
   }
+
+  // --- Plantillas -----------------------------------------------------------
+
+  List<RundownTemplate> loadTemplates() {
+    return _templates.values
+        .whereType<Map<dynamic, dynamic>>()
+        .map(RundownTemplate.fromJson)
+        .toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
+  Future<void> saveTemplate(RundownTemplate template) =>
+      _templates.put(template.id, template.toJson());
+
+  Future<void> deleteTemplate(String id) => _templates.delete(id);
 }
 
 /// Las cajas se abren en `main()` antes de `runApp`, por lo que este provider
@@ -67,6 +84,7 @@ class RundownRepository {
 final repositoryProvider = Provider<RundownRepository>((ref) {
   return RundownRepository(
     Hive.box<Map>(daysBoxName),
+    Hive.box<Map>(templatesBoxName),
     Hive.box<dynamic>(metaBoxName),
   );
 });
