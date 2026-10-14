@@ -1,11 +1,28 @@
 name: Build Windows 11
 
-# Compila el ejecutable de Windows en un runner `windows-latest`, porque Flutter
-# no permite compilar para Windows desde Linux/macOS (necesita MSVC + Windows SDK).
+# Compila la app para Windows en un runner `windows-latest`, porque Flutter no
+# permite compilar para Windows desde Linux/macOS (necesita MSVC + Windows SDK).
 #
-# Se generan dos artefactos:
-#   - rundown-setup-<versión>.exe : instalador autocontenido (Inno Setup)
-#   - rundown-windows-x64        : la carpeta Release, para inspección/debug
+# ---------------------------------------------------------------------------
+# OJO CON LOS NOMBRES: aquí aparecen tres cosas distintas que se llaman parecido
+#
+# 1. build/windows/x64/runner/Release/
+#    Es la carpeta de SALIDA DE FLUTTER. "Release" aquí significa "compilación
+#    optimizada", en oposición a "Debug". No tiene NADA que ver con GitHub.
+#
+# 2. Artifact de Actions (actions/upload-artifact)
+#    Un adjunto TEMPORAL del run. Aparece en la pestaña Actions, dentro de la
+#    ejecución concreta. Se descarga solo con la sesión de GitHub iniciada, se
+#    guarda comprimido y CADUCA. Sirve para desarrollo/pruebas, no para repartir.
+#
+# 3. GitHub Release (softprops/action-gh-release)
+#    Una publicación PERMANENTE y versionada, con etiqueta (p. ej. v1.0.0), que
+#    aparece en la sección "Releases" del repo y da una URL pública estable.
+#    ES LO QUE SE REPARTE A LOS USUARIOS.
+#
+# Por eso: al empujar a main solo se generan artifacts (para probar). Al empujar
+# una etiqueta v* se genera además una Release con el instalador adjunto.
+# ---------------------------------------------------------------------------
 
 on:
   push:
@@ -23,6 +40,10 @@ jobs:
     name: Compilar para Windows x64
     runs-on: windows-latest
     timeout-minutes: 45
+
+    # Necesario para que el token pueda crear la Release.
+    permissions:
+      contents: write
 
     steps:
       - name: Descargar el código
@@ -85,19 +106,39 @@ jobs:
 
           Get-ChildItem dist | Format-Table Name, Length -AutoSize
 
-      - name: Subir el instalador
+      # --- Release: solo al empujar una etiqueta v* -------------------------
+      - name: Publicar la Release con el instalador
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          name: Rundown Timer ${{ github.ref_name }}
+          files: dist/rundown-setup-*.exe
+          generate_release_notes: true
+          body: |
+            Instalador de Rundown Timer para Windows 10/11 (64 bits).
+
+            **Instalación**: descarga `rundown-setup-*.exe` y ejecútalo. No pide
+            permisos de administrador: se instala en tu perfil de usuario.
+
+            El archivo no está firmado digitalmente, así que Windows SmartScreen
+            mostrará un aviso la primera vez. Elige *Más información* →
+            *Ejecutar de todas formas*.
+
+      # --- Artifacts: adjuntos temporales del run, para desarrollo -----------
+      - name: Adjuntar el instalador (temporal, caduca)
         uses: actions/upload-artifact@v7
         with:
-          name: rundown-instalador-windows-x64
+          name: instalador-windows-x64
           path: dist/rundown-setup-*.exe
           if-no-files-found: error
           retention-days: 30
 
-      - name: Subir la carpeta Release (sin comprimir, para depurar)
+      - name: Adjuntar los archivos de compilación (solo para depurar)
         uses: actions/upload-artifact@v7
         with:
-          name: rundown-windows-x64
-          # exe + DLLs + data/: hace falta entero para ejecutarlo.
+          name: compilacion-windows-x64-sin-comprimir
+          # Salida cruda de Flutter: rundown.exe + DLLs + data/.
+          # NO se reparte: para el usuario final está el instalador.
           path: build/windows/x64/runner/Release/
           if-no-files-found: error
           retention-days: 30
