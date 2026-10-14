@@ -295,22 +295,30 @@ class _ScreenAction extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final count = ref.watch(displaysProvider).value?.length ?? 0;
+    final selectedId = ref.watch(selectedDisplayProvider);
     final active = ref.watch(activeDisplayProvider);
 
     return Tooltip(
       message: active != null
           ? 'Escenario en esta pantalla: ${active.name ?? 'sin nombre'}'
-          : count > 1
-              ? 'Escenario en la otra pantalla · $count detectadas'
-              : 'Pantallas conectadas',
+          : selectedId != null && selectedId.isNotEmpty
+              ? 'Escenario seleccionado, pero la pantalla ya no está conectada '
+                  '(id: $selectedId)'
+              : count > 1
+                  ? 'Escenario en la otra pantalla · $count detectadas'
+                  : 'Pantallas conectadas',
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           IconButton(
             onPressed: () => ScreenPickerDialog.show(context),
             icon: Icon(
-              active != null ? Icons.tv_rounded : Icons.tv_off_rounded,
-              color: active != null ? scheme.primary : null,
+              active != null || selectedId?.isNotEmpty == true
+                  ? Icons.tv_rounded
+                  : Icons.tv_off_rounded,
+              color: active != null || selectedId?.isNotEmpty == true
+                  ? scheme.primary
+                  : null,
             ),
           ),
           if (count > 1)

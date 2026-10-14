@@ -83,7 +83,9 @@ class ScreenPickerDialog extends ConsumerWidget {
                   itemBuilder: (context, index) => _DisplayTile(
                     display: list[index],
                     index: index,
-                    selected: list[index].id == selectedId,
+                    selected: list[index].id.isNotEmpty &&
+                selectedId != null &&
+                list[index].id == selectedId,
                   ),
                 ),
               ),
