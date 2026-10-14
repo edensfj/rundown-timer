@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -202,8 +203,29 @@ Future<void> _prepareStageWindow(StageWindowArgs args) async {
   // que el otro lado espere a que este motor termine de arrancar.
   await windowManager.ensureInitialized();
   await windowManager.setTitle(AppConfig.stageWindowTitle);
-  await placeWindow(args.frame, fullscreen: args.fullscreen);
+  await placeWindow(args.frame, fullscreen: args.fullscreen, force: true);
+
+  // Mostrarla aquí y no antes: si se muestra en su posición por defecto
+  // primero, el gestor la registra en el monitor equivocado y un `setFullScreen`
+  // posterior se queda anclado a esa pantalla, que es lo que pasaba al elegir
+  // un display.
   await windowManager.show();
+
+  // Cuando se pide fullscreen, en algunas combinación Windows/monitor el primer
+  // intento no prende hasta que la ventana se ha mostrado: se da una segunda
+  // oportunidad un instante después.
+  if (args.fullscreen) {
+    unawaited(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      try {
+        if (!await windowManager.isFullScreen()) {
+          await windowManager.setFullScreen(true);
+        }
+      } catch (_) {
+        // Si el sistema no responde, no se intenta más: que no caiga la app.
+      }
+    }());
+  }
 
   // El escenario puede estar horas proyectándose: la pantalla no se apaga.
   await WakelockPlus.enable();
