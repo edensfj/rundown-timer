@@ -113,6 +113,19 @@ const String stageCloseCommand = 'close';
 /// del escenario en Windows.
 String stageRunChannelName(String windowId) => 'rundown/stage-run/$windowId';
 
+/// Método con el que el escenario avisa de que **ya escucha**.
+///
+/// Hasta que no llega, el panel no puede distinguir «el escenario todavía se
+/// está montando» de «el escenario se ha quedado muerto»: su motor tarda
+/// segundos en arrancar y en ese rato los envíos fallan, que es lo normal. Sin
+/// este aviso, esos fallos se contaban como que la ventana se había ido y el
+/// panel se callaba **antes** de que el escenario pudiera oír una sola
+/// instantánea: la ventana se quedaba abierta y en blanco, con el reloj sin
+/// llegar nunca. Es lo que pasaba en Windows, donde el escenario es una segunda
+/// ventana; en Linux el envío va por una tubería y no falla, así que nunca se
+/// notó.
+const String stageReadyCommand = 'stage_ready';
+
 /// Método con el que el escenario le cuenta al panel que no ha podido montarse.
 ///
 /// `desktop_multi_window` crea la ventana del escenario **oculta**, para poder
@@ -224,13 +237,29 @@ Future<void> runStageWindow(
   // está corriendo: preguntar en el primer instante puede contestar «no hay
   // nadie», y ese tropiezo de milisegundos no puede costarle el reloj al
   // operador.
+  var escuchando = false;
   try {
     await _reintentando(
       'el canal del reloj',
       () => controller.setWindowMethodHandler(_stageMethodHandler(container)),
     );
+    escuchando = true;
   } catch (error) {
     await _avisarAlPanel(vuelta, '$error');
+  }
+
+  // Y se avisa de que ya se escucha, para que el panel sepa que a partir de aquí
+  // sus envíos ya pueden llegar; hasta entonces sus fallos son el arranque
+  // normal de un motor, no una ventana perdida.
+  if (escuchando) {
+    try {
+      await _reintentando(
+        'el aviso de que el escenario escucha',
+        () => vuelta.invokeMethod(stageReadyCommand),
+      );
+    } catch (_) {
+      // Sin aviso el panel manda el reloj igual; se pierde solo el margen.
+    }
   }
 
   // El arranque **nunca** se aborta antes de pintar. La ventana llega oculta y
@@ -261,10 +290,7 @@ Future<dynamic> Function(MethodCall) _stageMethodHandler(
   return (call) async {
     switch (call.method) {
       case 'update':
-        final data = (call.arguments as Map).cast<dynamic, dynamic>();
-        container
-            .read(remoteSnapshotProvider.notifier)
-            .push(CountdownSnapshot.fromJson(data));
+        _aplicarInstantanea(container, call.arguments);
         return null;
 
       case 'close':
@@ -282,6 +308,22 @@ Future<dynamic> Function(MethodCall) _stageMethodHandler(
         throw MissingPluginException('Método no soportado: ${call.method}');
     }
   };
+}
+
+/// Aplica la instantánea que llega del panel.
+///
+/// Una instantánea ilegible se ignora en vez de propagar la excepción: el canal
+/// cuenta los errores como «el escenario ya no está», así que un dato raro no
+/// puede llevarse por delante el reloj entero.
+void _aplicarInstantanea(ProviderContainer container, Object? arguments) {
+  try {
+    final data = (arguments as Map).cast<dynamic, dynamic>();
+    container
+        .read(remoteSnapshotProvider.notifier)
+        .push(CountdownSnapshot.fromJson(data));
+  } catch (_) {
+    // Se espera a la siguiente: mejor un reloj un segundo viejo que ninguno.
+  }
 }
 
 /// Reintenta [action] hasta que deje de fallar.

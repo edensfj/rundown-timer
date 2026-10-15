@@ -85,6 +85,13 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
   /// Envíos seguidos que han fallado; ver [push].
   int _pushFailures = 0;
 
+  /// Si el escenario ha avisado de que **ya escucha**; ver [stageReadyCommand].
+  ///
+  /// Hasta que avise, sus envíos pueden fallar sin más: su motor todavía se está
+  /// montando. Solo cuando avisa tiene sentido contar fallos como «la ventana ya
+  /// no está».
+  bool _stageReady = false;
+
   @override
   StageWindowStatus build() {
     // El escenario es un espejo del panel: cada vez que cambia lo que hay que
@@ -151,6 +158,7 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
   /// Deja el estado en «cerrado» y olvida dónde se había proyectado.
   void _reset() {
     _pushFailures = 0;
+    _stageReady = false;
     _stageDisplayKey = null;
     _stageFullscreen = false;
     _degradedToWindow = false;
@@ -345,6 +353,11 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
         return null;
       }
 
+      if (call.method == stageReadyCommand) {
+        _onStageReady(controller);
+        return null;
+      }
+
       if (call.method != StageRunCommand.channelKey) return null;
       final command = StageRunCommand.tryDecode(jsonEncode(call.arguments));
       command?.applyTo(
@@ -356,6 +369,7 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
 
     _controller = controller;
     _pushFailures = 0;
+    _stageReady = false;
     state = const StageWindowStatus(isOpen: true);
 
     // Red de seguridad. El plugin crea la ventana **oculta** a propósito, para
@@ -367,9 +381,51 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     // si el escenario ya la mostró antes, esto no cambia nada.
     unawaited(_mostrarSiSigueOculta(controller));
 
+    // Y si el escenario no da señales de vida en su margen, se dice: una ventana
+    // abierta que nunca recibe el reloj es peor que un aviso.
+    unawaited(_avisarSiNoArranca(controller));
+
     // Primer envío inmediato para que no se vea un reloj vacío al abrir.
     await push(ref.read(countdownProvider));
   }
+
+  /// El escenario avisa de que ya escucha.
+  ///
+  /// A partir de aquí sí se le puede mandar el reloj, así que se le manda el
+  /// estado actual en el momento: entre que se abrió la ventana y que su motor
+  /// arrancó, el reloj ha podido cambiar.
+  void _onStageReady(WindowController controller) {
+    if (_controller != controller || _stageReady) return;
+
+    _stageReady = true;
+    _pushFailures = 0;
+
+    unawaited(push(ref.read(countdownProvider)));
+  }
+
+  /// Avisa si el escenario no llega a dar señales de vida.
+  ///
+  /// Sin esto, un motor que no arranca dejaría el botón diciendo «cerrar», la
+  /// ventana abierta y el reloj vacío, sin una sola pista. El margen es el que
+  /// tarda un motor recién creado en montarse, con holgura.
+  Future<void> _avisarSiNoArranca(WindowController controller) async {
+    await Future<void>.delayed(_stageStartupGrace);
+    if (_controller != controller || _stageReady) return;
+
+    _controller = null;
+    unawaited(_olvidarCanal(controller.windowId));
+    _reset();
+
+    ref
+        .read(stageNoticeProvider.notifier)
+        .show(
+          'El escenario no ha respondido: la ventana está abierta pero no '
+          'recibe el reloj. Ciérrala y vuelve a abrirlo.',
+        );
+  }
+
+  /// Margen que se le da al motor del escenario para dar señales de vida.
+  static const Duration _stageStartupGrace = Duration(seconds: 15);
 
   /// El canal por el que el escenario le habla al panel; ver
   /// [stageRunChannelName].
@@ -649,7 +705,17 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     try {
       await controller.invokeMethod('update', snapshot.toJson());
       _pushFailures = 0;
+      // Un envío que llega es la mejor prueba de que el escenario escucha: vale
+      // como aviso aunque el suyo se haya perdido por el camino.
+      _stageReady = true;
     } catch (_) {
+      // Mientras el escenario no haya avisado de que escucha, fallar es lo
+      // normal: su motor todavía se está montando. Contarlos aquí daba la
+      // ventana por perdida **antes** de que el escenario pudiera oír una sola
+      // instantánea, y el panel se callaba para siempre: el reloj no llegaba
+      // nunca y la ventana se quedaba abierta y en blanco.
+      if (!_stageReady) return;
+
       if (++_pushFailures < _pushFailuresBeforeGone) return;
 
       _pushFailures = 0;
@@ -658,14 +724,16 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
       if (_controller != controller) return;
 
       _controller = null;
+      unawaited(_olvidarCanal(controller.windowId));
       _reset();
     }
   }
 
   /// Envíos fallidos seguidos que dan la ventana por perdida.
   ///
-  /// Tres y no uno porque al abrir es normal fallar el primero: el motor del
-  /// escenario todavía no ha instalado su receptor.
+  /// Tres y no uno porque un tropiezo suelto del canal no significa nada; solo
+  /// cuentan a partir de que el escenario ha avisado de que escucha, así que no
+  /// se confunden con el arranque de su motor.
   static const int _pushFailuresBeforeGone = 3;
 
   Future<Rect?> _panelBounds() async {
