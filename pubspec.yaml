@@ -2,7 +2,7 @@ name: rundown
 description: "Gestión de itinerarios y control de tiempos en vivo (Rundown / Event Timer)."
 publish_to: 'none'
 
-version: 1.4.3+17
+version: 1.4.4+18
 
 environment:
   sdk: ^3.13.5
