@@ -89,11 +89,16 @@ final todayProvider = Provider<DateTime>((ref) {
 
 /// Instante por el que arranca el día que se está ejecutando por el operador.
 ///
-/// Es el que se guardó al activar la opción. Si se quedó en un día anterior se
-/// reancla a la misma hora de hoy: si no, al volver a abrir la app al día
-/// siguiente el programa entero aparecería como terminado.
+/// Es el que se guardó al activar la opción ([EventDay.forceRunAt]). Si se quedó
+/// en un día anterior se reancla a la misma hora de hoy: si no, al volver a abrir
+/// la app al día siguiente el programa entero aparecería como terminado.
+///
+/// Sale de [stageDayProvider], **no** del día que se está editando: esto entra
+/// directo en el cronograma que se proyecta, así que tomarlo de la pestaña que se
+/// está mirando hacía que, al pasar a un día con un ensayo arrancado —o sin él—,
+/// se moviera la pantalla de un directo que nadie había tocado.
 final runAnchorProvider = Provider<DateTime?>((ref) {
-  final anchor = ref.watch(activeDayProvider)?.forceRunAt;
+  final anchor = ref.watch(stageDayProvider)?.forceRunAt;
   if (anchor == null) return null;
 
   final today = ref.watch(todayProvider);
@@ -226,6 +231,10 @@ final activeScheduleProvider = Provider<List<ScheduledActivity>>((ref) {
 /// que «tocaría» por la hora— y el «en curso» de la lista tiene que moverse con
 /// él, o la lista y lo proyectado acabarían diciendo cosas distintas.
 ///
+/// Una actividad **detenida a mano** no está «en curso» por mucho que su índice
+/// siga ahí: se dio por terminada, así que la lista la da por pasada y deja de
+/// pedirle al operador que la vigile.
+///
 /// Con un contador suelto activo, en cambio, la lista del día sigue con sus
 /// horas: el contador no forma parte del programa.
 ///
@@ -240,6 +249,7 @@ final activityStatusProvider = Provider<Map<String, ActivityStatus>>((ref) {
   final runIndex = ref.watch(
     runShowProvider.select((run) => run.indexOverride),
   );
+  final isStopped = ref.watch(runShowProvider.select((run) => run.stopped));
   final isDayRun =
       ref.watch(quickTimerProvider) == null &&
       ref.watch(stageDayIdProvider) == ref.watch(activeDayIdProvider);
@@ -248,7 +258,7 @@ final activityStatusProvider = Provider<Map<String, ActivityStatus>>((ref) {
     final current = runIndex.clamp(0, schedule.length - 1);
     return {
       for (var i = 0; i < schedule.length; i++)
-        schedule[i].item.id: i < current
+        schedule[i].item.id: i < current || (i == current && isStopped)
             ? ActivityStatus.past
             : i == current
             ? ActivityStatus.active
