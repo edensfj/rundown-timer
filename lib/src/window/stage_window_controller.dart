@@ -144,6 +144,7 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     if (sigueAbierta) return;
 
     _controller = null;
+    unawaited(_olvidarCanal(controller.windowId));
     _reset();
   }
 
@@ -334,8 +335,11 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
       WindowConfiguration(arguments: args.encode()),
     );
 
-    // Los botones del escenario llegan por aquí y se cumplen en el panel.
-    await controller.setWindowMethodHandler((call) async {
+    // Los botones del escenario y sus avisos llegan por aquí y se cumplen en el
+    // panel. Este canal lo registra **el panel** y lo usa el escenario; el del
+    // reloj va al revés y con otro nombre, porque el plugin solo admite un motor
+    // registrado por canal: ver [stageRunChannelName].
+    await _runChannel(controller.windowId).setMethodCallHandler((call) async {
       if (call.method == stageFailedCommand) {
         _onStageFailed(controller, call.arguments);
         return null;
@@ -367,6 +371,26 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     await push(ref.read(countdownProvider));
   }
 
+  /// El canal por el que el escenario le habla al panel; ver
+  /// [stageRunChannelName].
+  WindowMethodChannel _runChannel(String windowId) => WindowMethodChannel(
+    stageRunChannelName(windowId),
+    mode: ChannelMode.unidirectional,
+  );
+
+  /// Suelta el canal de vuelta del escenario.
+  ///
+  /// El nombre lleva el id de la ventana, que es nuevo en cada apertura: sin
+  /// soltarlo, cada vez que se abre el escenario quedaría un canal registrado
+  /// para siempre.
+  Future<void> _olvidarCanal(String windowId) async {
+    try {
+      await _runChannel(windowId).setMethodCallHandler(null);
+    } catch (_) {
+      // Si el motor del escenario ya no está, su registro se fue con él.
+    }
+  }
+
   /// Enseña la ventana del escenario desde el panel, aunque su motor no haya
   /// llegado a enseñarla nunca.
   Future<void> _mostrarSiSigueOculta(WindowController controller) async {
@@ -396,6 +420,8 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
 
     _controller = null;
     _reset();
+
+    unawaited(_olvidarCanal(controller.windowId));
 
     unawaited(() async {
       try {
@@ -545,6 +571,8 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     }
 
     if (controller == null) return;
+    await _olvidarCanal(controller.windowId);
+
     try {
       await controller.invokeMethod('close');
     } catch (_) {

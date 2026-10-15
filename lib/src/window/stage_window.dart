@@ -98,6 +98,21 @@ final remoteSnapshotProvider =
 /// proceso: llega por la entrada estándar, como las instantáneas.
 const String stageCloseCommand = 'close';
 
+/// Nombre del canal por el que **el escenario le habla al panel**: sus botones y
+/// sus avisos.
+///
+/// Va aparte del canal por el que el panel le habla al escenario, y no es un
+/// capricho de nomenclatura: el plugin deja **un solo motor registrado por nombre
+/// de canal** (`unidirectional`: uno registra, todos invocan), así que los dos
+/// sentidos no pueden compartir el suyo. Registrándolo los dos, el segundo en
+/// llegar se queda fuera con `CHANNEL_LIMIT_REACHED`; y como el panel registra el
+/// primero —su motor ya está en marcha, mientras el del escenario acaba de
+/// nacer—, el que se quedaba fuera era el escenario. Esa excepción salía del
+/// arranque, subía por `main` y mataba la ventana **antes de pintar nada**: de ahí
+/// la ventana blanca y vacía, y de ahí que no se mostrara ni sola. Era *el* fallo
+/// del escenario en Windows.
+String stageRunChannelName(String windowId) => 'rundown/stage-run/$windowId';
+
 /// Método con el que el escenario le cuenta al panel que no ha podido montarse.
 ///
 /// `desktop_multi_window` crea la ventana del escenario **oculta**, para poder
@@ -190,15 +205,60 @@ Future<void> runStageWindow(
 ) async {
   final container = _stageContainer();
 
-  // En Windows y macOS las órdenes de los botones viajan por el canal del
-  // plugin, en sentido contrario al del reloj.
+  // Canal de **vuelta** —del escenario al panel—: los botones y los avisos. Se
+  // registra en el panel y se usa desde aquí; ver [stageRunChannelName].
+  final vuelta = WindowMethodChannel(
+    stageRunChannelName(controller.windowId),
+    mode: ChannelMode.unidirectional,
+  );
+
   stageRunSender = (command) {
     unawaited(
-      controller.invokeMethod(StageRunCommand.channelKey, command.toJson()),
+      vuelta.invokeMethod(StageRunCommand.channelKey, command.toJson()),
     );
   };
 
-  await controller.setWindowMethodHandler((call) async {
+  // Canal de **ida** —del panel al escenario—: el reloj y las órdenes de ventana.
+  // Este lo registra el escenario y lo usa el panel. Se reintenta porque el
+  // plugin de esta ventana termina de registrarse **después** de que su motor ya
+  // está corriendo: preguntar en el primer instante puede contestar «no hay
+  // nadie», y ese tropiezo de milisegundos no puede costarle el reloj al
+  // operador.
+  try {
+    await _reintentando(
+      'el canal del reloj',
+      () => controller.setWindowMethodHandler(_stageMethodHandler(container)),
+    );
+  } catch (error) {
+    await _avisarAlPanel(vuelta, '$error');
+  }
+
+  // El arranque **nunca** se aborta antes de pintar. La ventana llega oculta y
+  // sin nadie mirándola: si algo falla aquí, el operador se queda sin escenario
+  // y sin un solo aviso. Se le cuenta al panel —que es quien puede decirlo— y se
+  // dibuja el reloj igual, mejor una ventana mal puesta que ninguna.
+  try {
+    await _prepareStageWindow(
+      args,
+      onProblem: (message) => unawaited(_avisarAlPanel(vuelta, message)),
+    );
+  } catch (error) {
+    await _avisarAlPanel(vuelta, '$error');
+  }
+
+  runApp(
+    UncontrolledProviderScope(
+      container: container,
+      child: const StageWindowApp(),
+    ),
+  );
+}
+
+/// Lo que el escenario atiende cuando le habla el panel.
+Future<dynamic> Function(MethodCall) _stageMethodHandler(
+  ProviderContainer container,
+) {
+  return (call) async {
     switch (call.method) {
       case 'update':
         final data = (call.arguments as Map).cast<dynamic, dynamic>();
@@ -221,33 +281,41 @@ Future<void> runStageWindow(
       default:
         throw MissingPluginException('Método no soportado: ${call.method}');
     }
-  });
+  };
+}
 
-  // El arranque **nunca** se aborta antes de pintar. La ventana llega oculta y
-  // sin nadie mirándola: si algo falla aquí, el operador se queda sin escenario
-  // y sin un solo aviso. Se le cuenta al panel —que es quien puede decirlo— y se
-  // dibuja el reloj igual, mejor una ventana mal puesta que ninguna.
-  try {
-    await _prepareStageWindow(
-      args,
-      onProblem: (message) => unawaited(_avisarAlPanel(controller, message)),
-    );
-  } catch (error) {
-    await _avisarAlPanel(controller, '$error');
+/// Reintenta [action] hasta que deje de fallar.
+///
+/// El plugin de la segunda ventana **termina de registrarse después** de que su
+/// motor haya arrancado, así que las primeras llamadas pueden contestar «no hay
+/// nadie». Sin estos reintentos, un tropiezo de milisegundos se convierte en una
+/// ventana en blanco para siempre.
+Future<T> _reintentando<T>(
+  String que,
+  Future<T> Function() action, {
+  int intentos = 40,
+}) async {
+  Object? ultimo;
+
+  for (var intento = 0; intento < intentos; intento++) {
+    try {
+      return await action();
+    } catch (error) {
+      ultimo = error;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
   }
 
-  runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: const StageWindowApp(),
-    ),
-  );
+  throw Exception('$que no respondió: $ultimo');
 }
 
 /// Le cuenta al panel lo que ha fallado al montar el escenario.
-Future<void> _avisarAlPanel(WindowController controller, String message) async {
+///
+/// Va por el canal de vuelta y no por el de ida: el de ida lo registra el propio
+/// escenario, así que invocarlo desde aquí se lo devolvería a sí mismo.
+Future<void> _avisarAlPanel(WindowMethodChannel vuelta, String message) async {
   try {
-    await controller.invokeMethod(stageFailedCommand, {'error': message});
+    await vuelta.invokeMethod(stageFailedCommand, {'error': message});
   } catch (_) {
     // Si ni el aviso llega, no queda más que pintar el reloj: la ventana ya está
     // en pantalla y el operador la ve.
@@ -460,6 +528,60 @@ class StageWindowApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: const Material(color: StageColors.black, child: StageView()),
+    );
+  }
+}
+
+/// Lo que se pinta cuando el arranque de una ventana falla.
+///
+/// Existe para no morir en silencio. En Windows la ventana del escenario nace
+/// **oculta** y su motor no pinta nada hasta que alguien llega a `runApp`: una
+/// excepción por el camino se queda en una ventana blanca y vacía, sin una sola
+/// pista de qué ha pasado y sin haber mostrado nunca la ventana. Con esto, el
+/// fallo se lee —y se puede copiar— en vez de adivinarse.
+class StageStartupErrorApp extends StatelessWidget {
+  const StageStartupErrorApp({super.key, required this.error, this.stack});
+
+  final String error;
+  final String? stack;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Material(
+        color: StageColors.black,
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SelectableText(
+                  'No se pudo arrancar esta ventana',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SelectableText(
+                  error,
+                  style: const TextStyle(color: Colors.white, fontSize: 18),
+                ),
+                if (stack != null) ...[
+                  const SizedBox(height: 24),
+                  SelectableText(
+                    stack!,
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
