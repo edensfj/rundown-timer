@@ -98,6 +98,16 @@ final remoteSnapshotProvider =
 /// proceso: llega por la entrada estándar, como las instantáneas.
 const String stageCloseCommand = 'close';
 
+/// Método con el que el escenario le cuenta al panel que no ha podido montarse.
+///
+/// `desktop_multi_window` crea la ventana del escenario **oculta**, para poder
+/// colocarla en la pantalla correcta antes de que nadie la vea. El precio de
+/// hacerlo así es que cualquier fallo de arranque se queda mudo: la ventana no
+/// aparece y el panel cree que todo va bien, porque para él el escenario se
+/// «abrió». Con esta orden, un fallo de arranque sale a la luz como lo que es —
+/// un aviso con el motivo— en lugar de un botón que dice «cerrar» y nada más.
+const String stageFailedCommand = 'stage_failed';
+
 /// Método (o palabra) con la que el panel mueve la ventana del escenario.
 const String stageWindowCommand = 'window';
 
@@ -213,7 +223,18 @@ Future<void> runStageWindow(
     }
   });
 
-  await _prepareStageWindow(args);
+  // El arranque **nunca** se aborta antes de pintar. La ventana llega oculta y
+  // sin nadie mirándola: si algo falla aquí, el operador se queda sin escenario
+  // y sin un solo aviso. Se le cuenta al panel —que es quien puede decirlo— y se
+  // dibuja el reloj igual, mejor una ventana mal puesta que ninguna.
+  try {
+    await _prepareStageWindow(
+      args,
+      onProblem: (message) => unawaited(_avisarAlPanel(controller, message)),
+    );
+  } catch (error) {
+    await _avisarAlPanel(controller, '$error');
+  }
 
   runApp(
     UncontrolledProviderScope(
@@ -221,6 +242,16 @@ Future<void> runStageWindow(
       child: const StageWindowApp(),
     ),
   );
+}
+
+/// Le cuenta al panel lo que ha fallado al montar el escenario.
+Future<void> _avisarAlPanel(WindowController controller, String message) async {
+  try {
+    await controller.invokeMethod(stageFailedCommand, {'error': message});
+  } catch (_) {
+    // Si ni el aviso llega, no queda más que pintar el reloj: la ventana ya está
+    // en pantalla y el operador la ve.
+  }
 }
 
 /// Monta el escenario **en su propio proceso** y no vuelve hasta que se cierra.
@@ -248,7 +279,10 @@ Future<void> runStageProcess(StageWindowArgs args) async {
         onError: (_) {},
       );
 
-  await _prepareStageWindow(args);
+  await _prepareStageWindow(
+    args,
+    onProblem: (message) => stdout.writeln('escenario: $message'),
+  );
 
   runApp(
     UncontrolledProviderScope(
@@ -337,37 +371,64 @@ ProviderContainer _stageContainer() => ProviderContainer(
 );
 
 /// Pone la ventana del escenario donde le dijeron. Igual en los dos caminos.
-Future<void> _prepareStageWindow(StageWindowArgs args) async {
-  // La ventana se coloca sola con lo que le mandó el panel: así no hace falta
-  // que el otro lado espere a que este motor termine de arrancar.
+///
+/// El orden de estos tres pasos no es cosmético, y en Windows es justo la
+/// diferencia entre ver el reloj y no ver nada:
+///
+/// 1. **Colocar antes de mostrar**: es lo que hace que la pantalla completa se
+///    ancle a la pantalla elegida y no a la principal.
+/// 2. **Mostrar antes de poner a pantalla completa**: la ventana llega oculta
+///    —a propósito, por el punto 1—, así que si el paso 3 falla, la ventana se
+///    queda invisible para siempre, sin ventana ni un solo aviso.
+/// 3. **Pantalla completa al final**, ya visible y en su sitio.
+///
+/// Y ningún paso puede impedir que la ventana se vea: si colocar o pantalla
+/// completa fallan, se le cuenta al panel y se sigue adelante.
+Future<void> _prepareStageWindow(
+  StageWindowArgs args, {
+  void Function(String message)? onProblem,
+}) async {
   await windowManager.ensureInitialized();
   await windowManager.setTitle(AppConfig.stageWindowTitle);
-  await placeWindow(args.frame, fullscreen: args.fullscreen, force: true);
 
-  // Mostrarla aquí y no antes: si se muestra en su posición por defecto
-  // primero, el gestor la registra en el monitor equivocado y un `setFullScreen`
-  // posterior se queda anclado a esa pantalla, que es lo que pasaba al elegir
-  // un display.
+  try {
+    await placeWindow(args.frame, fullscreen: false, force: true);
+  } catch (error) {
+    onProblem?.call('no se pudo colocar la ventana: $error');
+  }
+
   await windowManager.show();
 
-  // Cuando se pide fullscreen, en algunas combinación Windows/monitor el primer
-  // intento no prende hasta que la ventana se ha mostrado: se da una segunda
-  // oportunidad un instante después.
   if (args.fullscreen) {
-    unawaited(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      try {
-        if (!await windowManager.isFullScreen()) {
-          await windowManager.setFullScreen(true);
-        }
-      } catch (_) {
-        // Si el sistema no responde, no se intenta más: que no caiga la app.
-      }
-    }());
+    unawaited(_irAPantallaCompleta(onProblem));
   }
 
   // El escenario puede estar horas proyectándose: la pantalla no se apaga.
   await WakelockPlus.enable();
+}
+
+/// Se va a pantalla completa cuando se pidió.
+///
+/// En algunas combinaciones Windows/monitor el primer intento no prende hasta
+/// que la ventana se ha mostrado, así que se le da una segunda oportunidad un
+/// instante después. Si tampoco funciona, la ventana se queda visible y en su
+/// sitio: es un reloj feo, pero el operador lo ve y puede seguir trabajando.
+Future<void> _irAPantallaCompleta(void Function(String)? onProblem) async {
+  try {
+    await windowManager.setFullScreen(true);
+  } catch (error) {
+    onProblem?.call('no se pudo poner a pantalla completa: $error');
+    return;
+  }
+
+  await Future<void>.delayed(const Duration(milliseconds: 300));
+  try {
+    if (!await windowManager.isFullScreen()) {
+      await windowManager.setFullScreen(true);
+    }
+  } catch (_) {
+    // Si ya lo está, no hay nada que rehacer.
+  }
 }
 
 /// La app que corre dentro de la ventana del escenario: **solo el reloj**.

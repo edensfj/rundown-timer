@@ -336,6 +336,11 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
 
     // Los botones del escenario llegan por aquí y se cumplen en el panel.
     await controller.setWindowMethodHandler((call) async {
+      if (call.method == stageFailedCommand) {
+        _onStageFailed(controller, call.arguments);
+        return null;
+      }
+
       if (call.method != StageRunCommand.channelKey) return null;
       final command = StageRunCommand.tryDecode(jsonEncode(call.arguments));
       command?.applyTo(
@@ -349,8 +354,60 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     _pushFailures = 0;
     state = const StageWindowStatus(isOpen: true);
 
+    // Red de seguridad. El plugin crea la ventana **oculta** a propósito, para
+    // que el escenario la coloque en la pantalla correcta antes de que se vea, y
+    // la muestra su propio motor al terminar de colocarse. Si ese arranque se
+    // queda a medias, la ventana se quedaría invisible y sin decir nada: que es
+    // lo que pasaba al abrir el escenario en Windows. Aquí la enseña el panel,
+    // que no depende de que el otro motor haya llegado. Es idempotente, así que
+    // si el escenario ya la mostró antes, esto no cambia nada.
+    unawaited(_mostrarSiSigueOculta(controller));
+
     // Primer envío inmediato para que no se vea un reloj vacío al abrir.
     await push(ref.read(countdownProvider));
+  }
+
+  /// Enseña la ventana del escenario desde el panel, aunque su motor no haya
+  /// llegado a enseñarla nunca.
+  Future<void> _mostrarSiSigueOculta(WindowController controller) async {
+    // Margen de sobra para que el escenario se coloque y se muestre él mismo.
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    if (_controller != controller) return;
+
+    try {
+      await controller.show();
+    } catch (_) {
+      // Si tampoco así se ve, ya no hay ventana que enseñar.
+    }
+  }
+
+  /// El escenario dice que no ha podido montarse.
+  ///
+  /// Cierra la ventana —oculta y sin servir de nada— y le cuenta al operador por
+  /// qué. Sin esto, el botón se queda diciendo «cerrar» sin ninguna ventana
+  /// detrás, que es el fallo más difícil de diagnosticar que se puede tener.
+  void _onStageFailed(WindowController controller, Object? arguments) {
+    if (_controller != controller) return;
+
+    final error = switch (arguments) {
+      final Map data => '${data['error'] ?? 'sin detalle'}',
+      _ => '$arguments',
+    };
+
+    _controller = null;
+    _reset();
+
+    unawaited(() async {
+      try {
+        await controller.invokeMethod('close');
+      } catch (_) {
+        // Si el motor ya no está, la ventana se quedó sola y no hay más.
+      }
+    }());
+
+    ref
+        .read(stageNoticeProvider.notifier)
+        .show('No se pudo abrir el escenario: $error');
   }
 
   /// Abre el escenario como **segunda instancia de la app**.
