@@ -59,7 +59,7 @@ final stageSecondWindowProvider = Provider<bool>((ref) => !Platform.isLinux);
 class StageWindowNotifier extends Notifier<StageWindowStatus> {
   WindowController? _controller;
 
-  /// El escenario como proceso aparte; ver [_openSeparateProcess].
+  /// El escenario como proceso aparte; ver [_createSeparateProcess].
   Process? _process;
 
   StreamSubscription<void>? _windowEvents;
@@ -92,6 +92,16 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
   /// no está».
   bool _stageReady = false;
 
+  /// Temporizador que arranca el precalentado; ver [build].
+  Timer? _warmTimer;
+
+  /// El precalentado en marcha, para no lanzarlo dos veces; ver [_ensureWarm].
+  Future<void>? _warmFuture;
+
+  /// Margen que se deja antes de precalentar, para no competir con el arranque
+  /// del propio panel.
+  static const Duration _warmDelay = Duration(milliseconds: 1200);
+
   @override
   StageWindowStatus build() {
     // El escenario es un espejo del panel: cada vez que cambia lo que hay que
@@ -113,9 +123,18 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     // fuera de Linux.
     if (ref.read(stageSecondWindowProvider)) _watchWindows();
 
+    // Precalentado: el escenario se arranca **oculto** al inicio para que al
+    // pulsar «abrir» solo haya que enseñarlo. Eso es lo que hacía esperar —un
+    // motor de Flutter entero montándose desde cero—. Se deja pasar un instante
+    // para no competir con el arranque del panel.
+    _warmTimer = Timer(_warmDelay, () => unawaited(_ensureWarm()));
+
     ref.onDispose(() {
       _windowEvents?.cancel();
       _windowEvents = null;
+      _warmTimer?.cancel();
+      _warmTimer = null;
+      _destroyStage();
     });
 
     return const StageWindowStatus();
@@ -176,11 +195,41 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     final segundaVentana = ref.read(stageSecondWindowProvider);
 
     try {
+      // Si hay (o está en marcha) un escenario precalentado, se espera a él:
+      // reutilizarlo es lo que hace que abrir sea instantáneo.
+      await _ensureWarm();
+
       final (frame, fullscreen, displayKey) = await _stageFrame();
       _stageDisplayKey = displayKey;
       _stageFullscreen = fullscreen;
       _degradedToWindow = false;
 
+      // Precalentado: el motor ya está en marcha, solo hay que enseñarlo donde
+      // toca y mandarle el reloj actual.
+      if (_controller != null || _process != null) {
+        state = const StageWindowStatus(isOpen: true);
+        final mostrado = await _sendStageWindow(
+          frame: frame,
+          fullscreen: fullscreen,
+          visible: true,
+          force: true,
+          // Por si se abre tan pronto que su motor aún no ha terminado de
+          // registrarse: se reintenta un instante en vez de perder la orden.
+          intentos: 8,
+        );
+
+        if (mostrado) {
+          await push(ref.read(countdownProvider));
+          return;
+        }
+
+        // La ventana precalentada no respondió: se descarta y se crea una nueva
+        // justo abajo, como si no hubiera precalentado.
+        _destroyStage();
+        state = const StageWindowStatus();
+      }
+
+      // Sin precalentado —no se pudo o aún no está—: se crea ahora, como siempre.
       final args = StageWindowArgs(
         x: frame.left,
         y: frame.top,
@@ -190,10 +239,23 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
       );
 
       if (segundaVentana) {
-        await _openSecondWindow(args);
+        await _createSecondWindow(args, hidden: false);
       } else {
-        await _openSeparateProcess(args);
+        await _createSeparateProcess(args);
       }
+
+      // El escenario pudo caerse nada más nacer (su motor avisa de un fallo de
+      // arranque): en ese caso no se marca como abierto, que dejaría un botón
+      // diciendo «cerrar» sin nada detrás.
+      if (_controller == null && _process == null) {
+        state = const StageWindowStatus(
+          error: 'el escenario no llegó a arrancar',
+        );
+        return;
+      }
+
+      state = const StageWindowStatus(isOpen: true);
+      await push(ref.read(countdownProvider));
     } catch (error) {
       if (!segundaVentana) {
         // Lanzar la segunda instancia puede fallar (un directorio de solo
@@ -205,6 +267,45 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
 
       _controller = null;
       state = StageWindowStatus(error: '$error');
+    }
+  }
+
+  /// Arranca el escenario por adelantado, **oculto**, para que abrirlo no espere.
+  ///
+  /// Lo único lento de abrir el escenario era levantar su motor: un motor de
+  /// Flutter entero en Windows y macOS, una segunda instancia de la app en Linux.
+  /// Con esto ya está en marcha —escondido— cuando el operador pulsa «abrir», así
+  /// que solo hay que enseñar la ventana.
+  ///
+  /// Es best-effort: si no se puede precalentar, [open] crea el escenario en el
+  /// momento, exactamente como antes.
+  Future<void> _ensureWarm() => _warmFuture ??= _doEnsureWarm();
+
+  Future<void> _doEnsureWarm() async {
+    if (_controller != null || _process != null || state.isOpen) return;
+
+    final segundaVentana = ref.read(stageSecondWindowProvider);
+
+    // Da igual dónde caiga: nace oculta y se coloca de verdad al abrirla.
+    final args = StageWindowArgs(
+      x: 0,
+      y: 0,
+      width: AppConfig.stageWindowSize.width,
+      height: AppConfig.stageWindowSize.height,
+      fullscreen: false,
+      hidden: true,
+    );
+
+    try {
+      if (segundaVentana) {
+        await _createSecondWindow(args, hidden: true);
+      } else {
+        await _createSeparateProcess(args);
+      }
+    } catch (_) {
+      // Precalentar es un lujo: si falla, se abre en el momento y ya está.
+      _controller = null;
+      _process = null;
     }
   }
 
@@ -310,11 +411,28 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
   /// La orden viaja por el mismo canal que el reloj: el plugin en Windows y
   /// macOS, la entrada estándar en Linux. La coloca quien tiene su ventana: el
   /// escenario es otra ventana —u otro proceso— y no se puede mover desde fuera.
-  Future<void> _sendStageWindow({
+  ///
+  /// Devuelve `true` si la orden se entregó. Por tubería siempre se entrega: lo
+  /// que se escribe queda en el búfer y el escenario lo lee en cuanto escucha.
+  /// Por canal puede no entregarse, y eso es lo que permite saber que una ventana
+  /// precalentada ya no responde y hay que rehacerla.
+  ///
+  /// [intentos] solo cuenta para la segunda ventana: al mostrar una
+  /// **precalentada** su motor puede no haber terminado de registrarse todavía, y
+  /// perder la orden dejaría la ventana escondida para siempre.
+  Future<bool> _sendStageWindow({
     required Rect frame,
     required bool fullscreen,
+    bool visible = true,
+    bool force = false,
+    int intentos = 1,
   }) async {
-    final command = StageWindowCommand(frame: frame, fullscreen: fullscreen);
+    final command = StageWindowCommand(
+      frame: frame,
+      fullscreen: fullscreen,
+      visible: visible,
+      force: force,
+    );
 
     final process = _process;
     if (process != null) {
@@ -324,21 +442,35 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
       } catch (_) {
         // El proceso ya no está; [Process.exitCode] se encarga del estado.
       }
-      return;
+      return true;
     }
 
     final controller = _controller;
-    if (controller == null) return;
+    if (controller == null) return false;
 
-    try {
-      await controller.invokeMethod(stageWindowCommand, command.toJson());
-    } catch (_) {
-      // Si el motor del escenario ya no está, no hay a quién moverle la ventana.
+    for (var intento = 0; intento < intentos; intento++) {
+      try {
+        await controller.invokeMethod(stageWindowCommand, command.toJson());
+        return true;
+      } catch (_) {
+        // Si el motor del escenario ya no está, no hay a quién moverle la
+        // ventana; si aún se está registrando, se reintenta un instante.
+        if (intento == intentos - 1) return false;
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      }
     }
+
+    return false;
   }
 
-  /// Abre el escenario en una **segunda ventana del mismo proceso**.
-  Future<void> _openSecondWindow(StageWindowArgs args) async {
+  /// Crea el escenario como **segunda ventana del mismo proceso**.
+  ///
+  /// Con [hidden] la ventana nace —y se queda— escondida: es el precalentado. La
+  /// colocación y el reloj llegan al abrirla; ver [open].
+  Future<void> _createSecondWindow(
+    StageWindowArgs args, {
+    required bool hidden,
+  }) async {
     final controller = await WindowController.create(
       WindowConfiguration(arguments: args.encode()),
     );
@@ -370,7 +502,10 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     _controller = controller;
     _pushFailures = 0;
     _stageReady = false;
-    state = const StageWindowStatus(isOpen: true);
+
+    // Precalentada: aquí no se enseña ni se le manda nada. Lo hará [open], que es
+    // quien conoce la geometría real y el momento.
+    if (hidden) return;
 
     // Red de seguridad. El plugin crea la ventana **oculta** a propósito, para
     // que el escenario la coloque en la pantalla correcta antes de que se vea, y
@@ -384,9 +519,6 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     // Y si el escenario no da señales de vida en su margen, se dice: una ventana
     // abierta que nunca recibe el reloj es peor que un aviso.
     unawaited(_avisarSiNoArranca(controller));
-
-    // Primer envío inmediato para que no se vea un reloj vacío al abrir.
-    await push(ref.read(countdownProvider));
   }
 
   /// El escenario avisa de que ya escucha.
@@ -469,6 +601,10 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
   void _onStageFailed(WindowController controller, Object? arguments) {
     if (_controller != controller) return;
 
+    // Se mira **antes** de resetear: si el operador no había abierto nada, esto
+    // es el precalentado que no arrancó y no hay que molestarle con un aviso.
+    final estabaALaVista = state.isOpen;
+
     final error = switch (arguments) {
       final Map data => '${data['error'] ?? 'sin detalle'}',
       _ => '$arguments',
@@ -487,20 +623,28 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
       }
     }());
 
+    // Si era el precalentado —nadie lo había abierto—, no se avisa: al abrir se
+    // creará uno nuevo y ya se contará si vuelve a fallar. El aviso es para
+    // cuando el operador sí había pedido verlo.
+    if (!estabaALaVista) return;
+
     ref
         .read(stageNoticeProvider.notifier)
         .show('No se pudo abrir el escenario: $error');
   }
 
-  /// Abre el escenario como **segunda instancia de la app**.
+  /// Crea el escenario como **segunda instancia de la app**.
   ///
   /// Linux no aguanta dos vistas de Flutter dentro de un mismo proceso, pero sí
   /// dos procesos: esta instancia arranca como escenario y recibe el reloj por
   /// su entrada estándar, una instantánea por línea.
   ///
+  /// Si [StageWindowArgs.hidden] viene activo, la instancia nace —y se queda—
+  /// oculta: es el precalentado. El reloj y la colocación llegan al abrirla.
+  ///
   /// Lo que puede fallar es el lanzamiento; a partir de ahí nada lanza, para que
   /// un fallo no deje dos escenarios a la vez.
-  Future<void> _openSeparateProcess(StageWindowArgs args) async {
+  Future<void> _createSeparateProcess(StageWindowArgs args) async {
     final process = await Process.start(
       Platform.resolvedExecutable,
       const [],
@@ -515,7 +659,6 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
 
     _process = process;
     _pushFailures = 0;
-    state = const StageWindowStatus(isOpen: true);
 
     // Que el operador cierre la ventana del escenario termina su proceso, y esa
     // es la señal de que ya no hay reloj: el botón del panel vuelve solo.
@@ -532,8 +675,6 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     process.stderr
         .transform(utf8.decoder)
         .listen(stderr.write, onError: (_) {});
-
-    await push(ref.read(countdownProvider));
   }
 
   /// Una línea de la salida del escenario: una orden de sus botones o un aviso.
@@ -607,33 +748,54 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
   }
 
   /// Cierra el escenario, se esté proyectando donde se esté proyectando.
+  ///
+  /// No lo destruye: lo **esconde**. Su motor ya está en marcha —precalentado— y
+  /// así el próximo «abrir» es instantáneo; ver [_ensureWarm]. Se destruye de
+  /// verdad al cerrar la app, en [_destroyStage].
   Future<void> close() async {
-    final embedded = state.isEmbedded;
-    final controller = _controller;
-    final process = _process;
-
-    _controller = null;
-    _process = null;
-    _reset();
-
-    if (embedded) {
+    if (state.isEmbedded) {
+      _reset();
       await _restorePanelBounds();
       return;
     }
 
+    if (_controller != null || _process != null) {
+      _reset();
+      await _sendStageWindow(
+        frame: Rect.zero,
+        fullscreen: false,
+        visible: false,
+      );
+      return;
+    }
+
+    _reset();
+  }
+
+  /// Destruye de verdad la instancia del escenario —abierta o precalentada—.
+  ///
+  /// Solo se llama al cerrar la app: mientras tanto [close] la esconde, que es lo
+  /// que permite reabrirla al instante.
+  void _destroyStage() {
+    final process = _process;
+    final controller = _controller;
+    _process = null;
+    _controller = null;
+
     if (process != null) {
-      await _closeProcess(process);
+      unawaited(_closeProcess(process));
       return;
     }
 
     if (controller == null) return;
-    await _olvidarCanal(controller.windowId);
-
-    try {
-      await controller.invokeMethod('close');
-    } catch (_) {
-      // Si el motor del escenario ya no está, no hay nada que cerrar.
-    }
+    unawaited(_olvidarCanal(controller.windowId));
+    unawaited(() async {
+      try {
+        await controller.invokeMethod('close');
+      } catch (_) {
+        // Si el motor del escenario ya no está, no hay nada que cerrar.
+      }
+    }());
   }
 
   /// Pide a la segunda instancia que se cierre y, si no atiende, la apaga.
@@ -687,6 +849,10 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
   /// que la ventana no está: el operador la habrá cerrado con su aspa. Es el
   /// segundo camino para enterarse, por si el aviso del plugin no llega.
   Future<void> push(CountdownSnapshot snapshot) async {
+    // Precalentado y oculto: todavía no hay nada que pintar. El estado actual se
+    // le manda al abrirlo; ver [open].
+    if (!state.isOpen) return;
+
     final controller = _controller;
     final process = _process;
 

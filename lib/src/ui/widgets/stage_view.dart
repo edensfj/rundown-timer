@@ -167,14 +167,12 @@ class _StageViewState extends ConsumerState<StageView>
                       ? _StageContent(
                           key: const ValueKey('reloj'),
                           snapshot: snapshot,
-                          alertPulse: _alertPulse,
                           compact: apretado,
                         )
                       : _WithMarquee(
                           key: ValueKey('marquesina-${marquee.runId}'),
                           snapshot: snapshot,
                           overlay: marquee,
-                          alertPulse: _alertPulse,
                           compact: apretado,
                         ),
                 );
@@ -206,12 +204,10 @@ class _StageContent extends StatelessWidget {
   const _StageContent({
     super.key,
     required this.snapshot,
-    required this.alertPulse,
     required this.compact,
   });
 
   final CountdownSnapshot snapshot;
-  final Animation<double> alertPulse;
   final bool compact;
 
   @override
@@ -234,9 +230,7 @@ class _StageContent extends StatelessWidget {
       children: [
         _StageHeader(snapshot: snapshot, compact: compact),
         const SizedBox(height: 16),
-        Expanded(
-          child: CountdownDisplay(snapshot: snapshot, alertPulse: alertPulse),
-        ),
+        Expanded(child: CountdownDisplay(snapshot: snapshot)),
         if (!compact) ...[
           const SizedBox(height: 16),
           NextActivityBanner(snapshot: snapshot),
@@ -256,13 +250,11 @@ class _WithMarquee extends StatelessWidget {
     super.key,
     required this.snapshot,
     required this.overlay,
-    required this.alertPulse,
     required this.compact,
   });
 
   final CountdownSnapshot snapshot;
   final MarqueeOverlay overlay;
-  final Animation<double> alertPulse;
   final bool compact;
 
   @override
@@ -287,7 +279,6 @@ class _WithMarquee extends StatelessWidget {
               Expanded(
                 child: _StageContent(
                   snapshot: snapshot,
-                  alertPulse: alertPulse,
                   // Protagonista: el reloj se encoge y la cabecera se queda en
                   // lo esencial, que deja sitio al texto. Si no, el reloj se
                   // queda tal cual y el texto pasa por debajo.

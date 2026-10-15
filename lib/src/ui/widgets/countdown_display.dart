@@ -19,14 +19,9 @@ import '../../models/countdown_snapshot.dart';
 /// El tamaño base es enorme y [FittedBox] lo reduce hasta encajar, de modo que
 /// el resultado se adapta a cualquier resolución o proyector.
 class CountdownDisplay extends StatelessWidget {
-  const CountdownDisplay({
-    super.key,
-    required this.snapshot,
-    required this.alertPulse,
-  });
+  const CountdownDisplay({super.key, required this.snapshot});
 
   final CountdownSnapshot snapshot;
-  final Animation<double> alertPulse;
 
   /// Fuente base deliberadamente enorme: `scaleDown` la ajusta al hueco.
   static const double _baseFontSize = 1000;
@@ -52,26 +47,27 @@ class CountdownDisplay extends StatelessWidget {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Sin `AnimatedBuilder`: los dígitos no parpadean, el parpadeo lo
+            // pinta el fondo ([StageView]). Antes se re-maquetaba este texto —a
+            // 1000 px y con `FittedBox`— en cada fotograma del destello, y eso
+            // se notaba justo en los últimos minutos, que es cuando más parpadea.
             Expanded(
-              child: AnimatedBuilder(
-                animation: alertPulse,
-                builder: (context, _) => FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: phase == CountdownPhase.finished
-                      ? const _FinishedMessage()
-                      : Text(
-                          TimeFormatters.countdown(snapshot.remaining),
-                          maxLines: 1,
-                          style: TextStyle(
-                            fontFamily: AppConfig.countdownFontFamily,
-                            fontSize: _baseFontSize,
-                            height: 1.0,
-                            fontWeight: FontWeight.w700,
-                            color: phase.foreground,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: phase == CountdownPhase.finished
+                    ? const _FinishedMessage()
+                    : Text(
+                        TimeFormatters.countdown(snapshot.remaining),
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontFamily: AppConfig.countdownFontFamily,
+                          fontSize: _baseFontSize,
+                          height: 1.0,
+                          fontWeight: FontWeight.w700,
+                          color: phase.foreground,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
-                ),
+                      ),
               ),
             ),
             if (cabeSubtitulo) ...[

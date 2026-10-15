@@ -30,6 +30,7 @@ class StageWindowArgs {
     required this.width,
     required this.height,
     required this.fullscreen,
+    this.hidden = false,
   });
 
   final double x;
@@ -39,6 +40,13 @@ class StageWindowArgs {
 
   /// `true` cuando hay una pantalla elegida y el escenario debe ocuparla entera.
   final bool fullscreen;
+
+  /// `true` cuando la ventana se crea **escondida**, para dejarla precalentada.
+  ///
+  /// El escenario tarda en arrancar —un motor de Flutter entero— y eso es lo que
+  /// hacía esperar al abrirlo. Con el precalentado se arranca al inicio, oculto,
+  /// y al pulsar «abrir» solo hay que enseñarlo: la apertura es instantánea.
+  final bool hidden;
 
   Rect get frame => Rect.fromLTWH(x, y, width, height);
 
@@ -52,6 +60,7 @@ class StageWindowArgs {
     'width': width,
     'height': height,
     'fullscreen': fullscreen,
+    'hidden': hidden,
   };
 
   /// `null` cuando los argumentos no son de la ventana del escenario, es decir,
@@ -69,6 +78,7 @@ class StageWindowArgs {
         width: (json['width'] as num).toDouble(),
         height: (json['height'] as num).toDouble(),
         fullscreen: json['fullscreen'] as bool? ?? false,
+        hidden: json['hidden'] as bool? ?? false,
       );
     } catch (_) {
       // Argumentos ilegibles: se prefiere arrancar el panel antes que no abrir
@@ -153,13 +163,32 @@ const String stageWindowCommandKey = 'cmd';
 /// que es quien sabe qué pantalla se ha ido, así que se lo dice al escenario.
 @immutable
 class StageWindowCommand {
-  const StageWindowCommand({required this.frame, required this.fullscreen});
+  const StageWindowCommand({
+    required this.frame,
+    required this.fullscreen,
+    this.visible = true,
+    this.force = false,
+  });
 
   /// La ventana normal de siempre.
-  const StageWindowCommand.windowed(this.frame) : fullscreen = false;
+  const StageWindowCommand.windowed(this.frame)
+    : fullscreen = false,
+      visible = true,
+      force = false;
 
   final Rect frame;
   final bool fullscreen;
+
+  /// `false` para **esconder** la ventana sin cerrarla. Es lo que la deja
+  /// precalentada: el motor ya está en marcha, oculto, y el próximo «abrir» solo
+  /// tiene que volver a mostrarla.
+  final bool visible;
+
+  /// Fuerza el paso a pantalla completa aunque [window_manager] diga que ya lo
+  /// está. Es necesario al **mostrar una ventana precalentada**: oculta, su
+  /// estado de pantalla completa puede ser un falso positivo y dejarla en
+  /// ventana cuando debería ocupar la pantalla entera.
+  final bool force;
 
   String encode() => jsonEncode(toJson());
 
@@ -170,6 +199,8 @@ class StageWindowCommand {
     'width': frame.width,
     'height': frame.height,
     'fullscreen': fullscreen,
+    'visible': visible,
+    'force': force,
   };
 
   /// `null` si lo recibido no es una orden de ventana: entonces es una
@@ -198,6 +229,8 @@ class StageWindowCommand {
           (json['height'] as num).toDouble(),
         ),
         fullscreen: json['fullscreen'] as bool? ?? false,
+        visible: json['visible'] as bool? ?? true,
+        force: json['force'] as bool? ?? false,
       );
     } catch (_) {
       // Orden sin geometría: no hay nada que colocar.
@@ -275,6 +308,14 @@ Future<void> runStageWindow(
     await _avisarAlPanel(vuelta, '$error');
   }
 
+  // Precalentado: motor en marcha pero **sin pintar**, para que la ventana no se
+  // enseñe al arrancar. Se pinta cuando el panel mande mostrarla; ver
+  // [_aplicarOrdenDeVentana].
+  if (args.hidden) {
+    _stagePendienteDeMostrar = container;
+    return;
+  }
+
   runApp(
     UncontrolledProviderScope(
       container: container,
@@ -301,7 +342,7 @@ Future<dynamic> Function(MethodCall) _stageMethodHandler(
         final command = StageWindowCommand.fromJson(
           (call.arguments as Map).cast<dynamic, dynamic>(),
         );
-        if (command != null) await applyStageWindowCommand(command);
+        if (command != null) await _aplicarOrdenDeVentana(command);
         return null;
 
       default:
@@ -378,6 +419,16 @@ Future<void> runStageProcess(StageWindowArgs args) async {
   // estándar, que el panel ya tiene abierta.
   stageRunSender = sendStageRunCommandByStdout;
 
+  await _prepareStageWindow(
+    args,
+    onProblem: (message) => stdout.writeln('escenario: $message'),
+  );
+
+  // La tubería se escucha **después** de montar la ventana, no antes: una orden
+  // que llegue nada más abrir —«enséñate»— tiene que encontrarse la ventana ya
+  // montada. Escuchándola antes, esa orden podía ejecutarse con el plugin todavía
+  // sin inicializar y perderse, dejando escondida la ventana precalentada.
+  //
   // La tubería se cierra cuando el panel se va. Mejor cerrar que quedarse
   // proyectando un reloj congelado en una ventana huérfana.
   stdin
@@ -389,10 +440,14 @@ Future<void> runStageProcess(StageWindowArgs args) async {
         onError: (_) {},
       );
 
-  await _prepareStageWindow(
-    args,
-    onProblem: (message) => stdout.writeln('escenario: $message'),
-  );
+  // Precalentado: motor en marcha pero **sin pintar**. El runner de Linux enseña
+  // la ventana en el primer fotograma, así que aquí todavía no se llama a
+  // `runApp` —aparecería en pantalla al arrancar—: se pinta cuando el panel mande
+  // mostrarla; ver [_aplicarOrdenDeVentana].
+  if (args.hidden) {
+    _stagePendienteDeMostrar = container;
+    return;
+  }
 
   runApp(
     UncontrolledProviderScope(
@@ -415,7 +470,7 @@ void _onStageLine(ProviderContainer container, String line) {
   // el último estado recibido.
   final command = StageWindowCommand.tryDecode(line);
   if (command != null) {
-    unawaited(applyStageWindowCommand(command));
+    unawaited(_aplicarOrdenDeVentana(command));
     return;
   }
 
@@ -437,6 +492,22 @@ void _onStageLine(ProviderContainer container, String line) {
 /// activo, el sistema sigue recolocando la ventana por su cuenta, y quitarlo
 /// después dejaría una ventana con la medida de una pantalla que ya no existe.
 Future<void> applyStageWindowCommand(StageWindowCommand command) async {
+  // Esconder sin cerrar: deja la ventana precalentada para el próximo «abrir».
+  // No se coloca ni se toca nada más: sigue donde estaba, solo que invisible.
+  if (!command.visible) {
+    try {
+      await windowManager.hide();
+    } catch (_) {
+      // Aunque no se pueda esconder, la orden no tiene nada más que hacer.
+    }
+    try {
+      await WakelockPlus.disable();
+    } catch (_) {
+      // Sin wakelock la ventana sigue igual: es un extra, no un requisito.
+    }
+    return;
+  }
+
   try {
     await windowManager.setFullScreen(false);
 
@@ -454,15 +525,66 @@ Future<void> applyStageWindowCommand(StageWindowCommand command) async {
     // colocación: es el camino que devuelve el reloj a una ventana normal.
   }
 
-  await placeWindow(command.frame, fullscreen: command.fullscreen);
+  try {
+    await placeWindow(
+      command.frame,
+      fullscreen: command.fullscreen,
+      force: command.force,
+    );
+  } catch (_) {
+    // Colocar es lo ideal; si el plugin todavía no responde, mejor mostrarla mal
+    // puesta que no mostrarla: el panel reintenta la orden.
+  }
 
   // Colocarla la deja visible; si el sistema la había escondido al recolocarla
-  // tras la desconexión, se enseña otra vez.
+  // tras la desconexión, se enseña otra vez. Es también lo que saca a la luz una
+  // ventana precalentada cuando se abre el escenario.
   try {
     await windowManager.show();
   } catch (_) {
     // Si ya está visible, no hay nada que rehacer.
   }
+
+  // La ventana precalentada nació sin wakelock (estaba oculta); ahora que se
+  // enseña, la pantalla del escenario no debe apagarse.
+  try {
+    await WakelockPlus.enable();
+  } catch (_) {
+    // El wakelock es un extra: sin él el reloj se sigue viendo.
+  }
+}
+
+/// Contenedor del escenario **precalentado** que todavía no se ha pintado.
+///
+/// El runner de escritorio enseña la ventana en el **primer fotograma** (Linux en
+/// `first_frame_cb`, Windows en el callback de `FlutterWindow`), así que un
+/// escenario precalentado no puede llamar a `runApp` hasta que el panel pida
+/// mostrarlo: si lo hiciera, aparecería en pantalla al arrancar la app. Mientras
+/// está aquí, el motor ya está en marcha —que es lo que tarda— pero no pinta nada.
+ProviderContainer? _stagePendienteDeMostrar;
+
+/// Aplica una orden de ventana, arrancando el escenario si estaba precalentado.
+///
+/// La orden de «mostrar» es la que enciende el escenario precalentado: se coloca
+/// **antes** de pintar, para que su primera imagen ya salga en su sitio.
+Future<void> _aplicarOrdenDeVentana(StageWindowCommand command) async {
+  final pendiente = _stagePendienteDeMostrar;
+
+  if (command.visible && pendiente != null) {
+    // Se marca antes del `await` para no arrancar dos veces si llegan dos
+    // órdenes seguidas.
+    _stagePendienteDeMostrar = null;
+    await applyStageWindowCommand(command);
+    runApp(
+      UncontrolledProviderScope(
+        container: pendiente,
+        child: const StageWindowApp(),
+      ),
+    );
+    return;
+  }
+
+  await applyStageWindowCommand(command);
 }
 
 /// El contenedor del escenario, con el reloj sustituido por lo que llega de
@@ -500,6 +622,18 @@ Future<void> _prepareStageWindow(
 }) async {
   await windowManager.ensureInitialized();
   await windowManager.setTitle(AppConfig.stageWindowTitle);
+
+  // Precalentado: la ventana nace escondida y se queda así. No se coloca ni se
+  // muestra todavía —cuando se abra se hará con la geometría real—, pero el motor
+  // ya está arrancando, que es lo que tarda.
+  if (args.hidden) {
+    try {
+      await windowManager.hide();
+    } catch (_) {
+      // Si no se puede esconder, al menos no se muestra: sigue invisible.
+    }
+    return;
+  }
 
   try {
     await placeWindow(args.frame, fullscreen: false, force: true);
