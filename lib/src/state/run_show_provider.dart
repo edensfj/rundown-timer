@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/activity_notice.dart';
 import '../models/run_show_state.dart';
 import '../models/scheduled_activity.dart';
 import 'clock_provider.dart';
+import 'marquee_provider.dart';
 import 'on_air_provider.dart';
 import 'schedule_provider.dart';
 
@@ -133,6 +135,23 @@ class RunShowNotifier extends Notifier<RunShowState> {
     final slot = schedule[safe];
     final effectiveNow = base.effectiveNow(ref.read(clockProvider));
 
+    // El aviso de cierre de la actividad que se deja sale **antes** de mover
+    // nada: en cuanto el plan se desplaza, la anterior ya no es la anterior.
+    // Si el evento aún no había empezado (`-1`) no hay nada que cerrar.
+    final previous = _onAirIndex(base);
+    final cambia = previous != safe;
+    if (cambia) {
+      final playback = ref.read(marqueePlaybackProvider.notifier);
+
+      // Un aviso va atado a la actividad que lo mandó: al pasar a la siguiente se
+      // va con ella, y si la nueva no avisa de nada la pantalla se queda limpia.
+      // Un mensaje del chat no se toca —ese lo mandó el operador a propósito—.
+      playback.stopNotice();
+      if (previous >= 0) {
+        _fireNotice(schedule[previous], NoticeTrigger.onEnd);
+      }
+    }
+
     // El plan ya trae aplicado el desfase anterior, así que esta resta es lo que
     // falta por mover para que la actividad empiece justo ahora.
     _shiftPlanBy(effectiveNow.difference(slot.startTime));
@@ -146,6 +165,8 @@ class RunShowNotifier extends Notifier<RunShowState> {
         eventFinished: false,
       ),
     );
+
+    if (cambia) _fireNotice(slot, NoticeTrigger.onStart);
   }
 
   /// Mueve el plan de la fuente que se está proyectando. Cada día lleva la cuenta
@@ -161,6 +182,9 @@ class RunShowNotifier extends Notifier<RunShowState> {
   /// se hayan hecho a mano. Es también la vuelta atrás del «día en el aire»: desde
   /// aquí el escenario vuelve a seguir al día que se esté viendo.
   void syncWithClock() {
+    final schedule = _schedule;
+    final previous = _onAirIndex(_current);
+
     ref
         .read(planShiftStoreProvider.notifier)
         .reset(ref.read(stageSourceIdProvider) ?? '');
@@ -172,6 +196,14 @@ class RunShowNotifier extends Notifier<RunShowState> {
         eventFinished: false,
       ),
     );
+
+    if (schedule.isEmpty) return;
+    final next = _onAirIndex(_current);
+    if (next == previous) return;
+
+    ref.read(marqueePlaybackProvider.notifier).stopNotice();
+    if (previous >= 0) _fireNotice(schedule[previous], NoticeTrigger.onEnd);
+    if (next >= 0) _fireNotice(schedule[next], NoticeTrigger.onStart);
   }
 
   /// Termina la actividad que está en pantalla.
@@ -185,7 +217,15 @@ class RunShowNotifier extends Notifier<RunShowState> {
     if (schedule.isEmpty) return;
 
     final base = _current;
-    _set(base.copyWith(stopped: !base.stopped, pausedAt: null));
+    final stopping = !base.stopped;
+    _set(base.copyWith(stopped: stopping, pausedAt: null));
+
+    // Detener es detener **todo**: la cuenta se congela y lo que esté cruzando
+    // desaparece. En directo, «para la actividad» se entiende como «quita eso de
+    // la pantalla», no como «déjalo ahí pasando». Por eso el aviso de «al
+    // terminar» no sale por aquí —sale al pasar a la siguiente—: en mitad de un
+    // «parad un momento» saltaría un texto que nadie pidió.
+    if (stopping) ref.read(marqueePlaybackProvider.notifier).stop();
   }
 
   void togglePause() {
@@ -204,15 +244,44 @@ class RunShowNotifier extends Notifier<RunShowState> {
 
   /// Reinicia el conteo de la actividad actual: vuelve a empezar desde su
   /// duración completa, como si arrancara en este momento.
+  ///
+  /// Su aviso vuelve a salir. Reiniciar **es** empezar la actividad otra vez —si
+  /// es un DESCANSO con su «pueden salir del salón», al repetirlo se repite
+  /// también— así que el texto se manda igual que al ejecutarla por primera vez.
   void restart() {
     final schedule = _schedule;
     if (schedule.isEmpty) return;
-    _moveTo(_currentIndex(), unpause: true);
+
+    final index = _currentIndex();
+    _moveTo(index, unpause: true);
+    _fireNotice(schedule[index], NoticeTrigger.onStart);
   }
 
-  void finishEvent() => _set(_current.copyWith(eventFinished: true));
+  /// Cierra el evento. La actividad que estaba en pantalla se da por terminada,
+  /// así que su aviso de cierre sale aquí.
+  void finishEvent() {
+    final schedule = _schedule;
+    final playback = ref.read(marqueePlaybackProvider.notifier);
+    final index = _onAirIndex(_current);
+
+    playback.stopNotice();
+    if (index >= 0) _fireNotice(schedule[index], NoticeTrigger.onEnd);
+    _set(_current.copyWith(eventFinished: true));
+  }
 
   void resumeEvent() => _set(_current.copyWith(eventFinished: false));
+
+  /// Lanza el aviso de [activity] si toca [trigger].
+  ///
+  /// Va por la marquesina, no por un canal nuevo: el escenario ya sabe pintar
+  /// eso, y el texto cruza con los ajustes que el operador tenga puestos. Se
+  /// quita solo al cumplir su límite —un rato o un número de pasadas—, así que
+  /// nadie tiene que acordarse de pararlo.
+  void _fireNotice(ScheduledActivity? activity, NoticeTrigger trigger) {
+    final notice = activity?.item.notice;
+    if (notice == null || notice.trigger != trigger) return;
+    ref.read(marqueePlaybackProvider.notifier).showNotice(notice);
+  }
 
   /// Suma (o resta, con delta negativo) tiempo al conteo en curso.
   ///
@@ -221,6 +290,24 @@ class RunShowNotifier extends Notifier<RunShowState> {
   /// los lleva —y el resto del programa se retrasa con él—, pero el guion
   /// guardado no se toca.
   void addTime(Duration delta) => _shiftPlanBy(delta);
+
+  /// Índice de la actividad que está al aire según [base], o `-1` si el evento
+  /// todavía no ha empezado —entonces no hay nada en el escenario que cerrar—.
+  ///
+  /// Es distinto de [_currentIndex], que nunca devuelve negativo porque se usa
+  /// para moverse por la lista: aquí interesa saber si hay algo al aire de verdad.
+  int _onAirIndex(RunShowState base) {
+    final schedule = _schedule;
+    if (schedule.isEmpty) return -1;
+
+    final override = base.indexOverride;
+    if (override != null) return override.clamp(0, schedule.length - 1);
+
+    return resolveRunIndex(
+      schedule,
+      base.effectiveNow(ref.read(clockProvider)),
+    );
+  }
 
   /// Índice efectivo: el fijado si lo hay, si no el que deduce el reloj.
   ///

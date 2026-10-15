@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/time_formatters.dart';
+import '../../models/activity_notice.dart';
 import '../../models/scheduled_activity.dart';
 import '../../state/schedule_provider.dart';
 import '../../state/stage_flash_provider.dart';
@@ -188,7 +189,8 @@ class _CardBodyState extends State<_CardBody> {
                           ),
                         ],
                         if (item.responsible != null ||
-                            item.location != null) ...[
+                            item.location != null ||
+                            item.notice != null) ...[
                           const SizedBox(height: 8),
                           Wrap(
                             spacing: 14,
@@ -203,6 +205,11 @@ class _CardBodyState extends State<_CardBody> {
                                 _MetaLine(
                                   icon: Icons.place_outlined,
                                   text: item.location!,
+                                ),
+                              if (item.notice != null)
+                                _MetaLine(
+                                  icon: Icons.campaign_outlined,
+                                  text: _noticeLabel(item.notice!),
                                 ),
                             ],
                           ),
@@ -409,6 +416,17 @@ class _MetaLine extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Cómo se resume el aviso en la tarjeta: cuándo sale y cuánto se queda.
+String _noticeLabel(ActivityNotice notice) {
+  final cuando = notice.trigger == NoticeTrigger.onStart
+      ? 'al empezar'
+      : 'al terminar';
+  final cuanto = notice.limit == NoticeLimit.repeats
+      ? '${notice.repeats} ${notice.repeats == 1 ? 'vez' : 'veces'}'
+      : TimeFormatters.humanDuration(notice.duration);
+  return 'Aviso $cuando · $cuanto';
 }
 
 class _ActiveBadge extends StatelessWidget {

@@ -143,19 +143,40 @@ class _StageViewState extends ConsumerState<StageView>
                 // se retira el pie.
                 final apretado = constraints.maxHeight < _compactHeight;
 
-                if (marquee != null) {
-                  return _WithMarquee(
-                    snapshot: snapshot,
-                    overlay: marquee,
-                    alertPulse: _alertPulse,
-                    compact: apretado,
-                  );
-                }
-
-                return _StageContent(
-                  snapshot: snapshot,
-                  alertPulse: _alertPulse,
-                  compact: apretado,
+                // Entre «hay texto» y «solo reloj» no hay un salto: el texto se
+                // desvanece recogiéndose y el reloj entra creciendo. Sin esto el
+                // cambio se nota como un fogonazo en mitad del evento.
+                return AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 420),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  layoutBuilder: _apilarTransicion,
+                  transitionBuilder: (hijo, animacion) => FadeTransition(
+                    opacity: animacion,
+                    child: ScaleTransition(
+                      // 0,94 ↔ 1: el que entra crece y el que sale se recoge con
+                      // la misma curva, sin tocar el contenido de ninguno.
+                      scale: Tween<double>(
+                        begin: 0.94,
+                        end: 1,
+                      ).animate(animacion),
+                      child: hijo,
+                    ),
+                  ),
+                  child: marquee == null
+                      ? _StageContent(
+                          key: const ValueKey('reloj'),
+                          snapshot: snapshot,
+                          alertPulse: _alertPulse,
+                          compact: apretado,
+                        )
+                      : _WithMarquee(
+                          key: ValueKey('marquesina-${marquee.runId}'),
+                          snapshot: snapshot,
+                          overlay: marquee,
+                          alertPulse: _alertPulse,
+                          compact: apretado,
+                        ),
                 );
               },
             ),
@@ -166,12 +187,24 @@ class _StageViewState extends ConsumerState<StageView>
   }
 }
 
+/// Los dos estados —con texto y sin texto— se apilan ocupando todo el hueco
+/// durante la transición, para que el reloj entrante caiga justo donde se va a
+/// quedar cuando la animación termine.
+Widget _apilarTransicion(Widget? actual, List<Widget> anteriores) {
+  return Stack(
+    fit: StackFit.expand,
+    alignment: Alignment.center,
+    children: [...anteriores, ?actual],
+  );
+}
+
 /// La zona del reloj: cabecera + cuenta atrás, o solo la hora actual.
 ///
 /// Se extrajo para poder dibujarla tanto a pantalla completa como encima de la
 /// marquesina, donde ocupa menos alto y por eso el reloj se ve más pequeño.
 class _StageContent extends StatelessWidget {
   const _StageContent({
+    super.key,
     required this.snapshot,
     required this.alertPulse,
     required this.compact,
@@ -220,6 +253,7 @@ class _StageContent extends StatelessWidget {
 /// [StageView] de siempre y el reloj recupera su tamaño.
 class _WithMarquee extends StatelessWidget {
   const _WithMarquee({
+    super.key,
     required this.snapshot,
     required this.overlay,
     required this.alertPulse,

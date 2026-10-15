@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/ids.dart';
 import '../data/rundown_repository.dart';
+import '../models/activity_notice.dart';
 import '../models/marquee.dart';
 
 /// Ajustes de la marquesina, tal como los dejó el operador.
@@ -92,7 +93,23 @@ final marqueeMessagesProvider =
 /// el pase guarda los ajustes que se están usando —no los del envío— y el
 /// escenario los va reverdando en cada instantánea.
 class MarqueePlaybackNotifier extends Notifier<MarqueeOverlay?> {
+  /// `messageId` del pase de un aviso de actividad.
+  ///
+  /// No es el id de ningún mensaje del chat —los avisos no se guardan ahí— y
+  /// sirve para distinguir quién mandó lo que cruza: un aviso lo manda la propia
+  /// actividad y se va con ella, un mensaje del chat lo mandó el operador y se
+  /// queda hasta que cruce entero o él lo pare.
+  static const avisoId = 'aviso';
+
+  /// `true` si lo que está cruzando ahora mismo es un aviso de actividad.
+  bool get isNoticeOnAir => state?.messageId == avisoId;
+
   Timer? _timer;
+
+  /// Final de un aviso de actividad: el texto cruza en bucle y este reloj lo
+  /// quita al cumplir su límite. Es aparte de [_timer] porque un aviso no acaba
+  /// cuando termina de cruzar, sino cuando se le acaba el tiempo.
+  Timer? _noticeTimer;
 
   /// Cuándo arrancó el pase en curso, para poder recalcular cuánto le queda.
   DateTime? _startedAt;
@@ -101,7 +118,9 @@ class MarqueePlaybackNotifier extends Notifier<MarqueeOverlay?> {
   MarqueeOverlay? build() {
     ref.onDispose(() {
       _timer?.cancel();
+      _noticeTimer?.cancel();
       _timer = null;
+      _noticeTimer = null;
     });
 
     ref.listen(
@@ -163,37 +182,85 @@ class MarqueePlaybackNotifier extends Notifier<MarqueeOverlay?> {
       Duration(
         milliseconds: (overlay.duration.inMilliseconds * pending).round(),
       ),
-      () {
-        if (!ref.mounted) return;
-        state = null;
-        _startedAt = null;
-      },
+      _clear,
     );
   }
 
-  void _start(MarqueeMessage message, MarqueeSettings settings) {
+  /// Manda a la pantalla el aviso de una actividad.
+  ///
+  /// Cruza con los ajustes de la marquesina —velocidad, tamaño, dirección— salvo
+  /// el reloj, que el aviso decide por su cuenta, y se quita solo al cumplir su
+  /// límite: un rato, o un número exacto de pasadas. **No** entra en el chat: es
+  /// de la actividad, no un mensaje suelto.
+  void showNotice(ActivityNotice notice) {
+    if (!notice.isUsable) return;
+
+    final settings = ref
+        .read(marqueeSettingsProvider)
+        .copyWith(showTimer: notice.showTimer);
+    final pass = marqueeTravelTime(notice.text, settings);
+
+    _startPass(
+      text: notice.text,
+      messageId: avisoId,
+      settings: settings,
+      loop: true,
+      endAfter: notice.totalDuration(pass),
+    );
+  }
+
+  void _start(MarqueeMessage message, MarqueeSettings settings) => _startPass(
+    text: message.text,
+    messageId: message.id,
+    settings: settings,
+    loop: message.loop,
+  );
+
+  /// Arranca un pase de [text] y programa su final.
+  ///
+  /// [endAfter] es el caso de los avisos: el texto cruza en bucle —siempre a la
+  /// misma velocidad— y se quita al cumplir el límite. Sin él, un pase en bucle
+  /// dura hasta que lo pare el operador, y uno normal acaba al terminar de cruzar.
+  void _startPass({
+    required String text,
+    required String messageId,
+    required MarqueeSettings settings,
+    required bool loop,
+    Duration? endAfter,
+  }) {
     _timer?.cancel();
+    _noticeTimer?.cancel();
     _timer = null;
+    _noticeTimer = null;
     _startedAt = DateTime.now();
 
-    final duration = marqueeTravelTime(message.text, settings);
+    final duration = marqueeTravelTime(text, settings);
     state = MarqueeOverlay(
       runId: newId(),
-      messageId: message.id,
-      text: message.text,
+      messageId: messageId,
+      text: text,
       settings: settings,
       duration: duration,
-      loop: message.loop,
+      loop: loop,
     );
 
-    // En bucle no hay final que programar: dura hasta que el operador lo corta.
-    if (message.loop) return;
+    if (endAfter != null) {
+      _noticeTimer = Timer(endAfter, _clear);
+      return;
+    }
 
-    _timer = Timer(duration, () {
-      if (!ref.mounted) return;
-      state = null;
-      _startedAt = null;
-    });
+    // En bucle no hay final que programar: dura hasta que el operador lo corta.
+    if (loop) return;
+
+    _timer = Timer(duration, _clear);
+  }
+
+  /// Quita el pase de la pantalla y deja el reloj como estaba. Lo comparten el
+  /// final normal de un pase, el de un aviso y el botón de detener.
+  void _clear() {
+    if (!ref.mounted) return;
+    state = null;
+    _startedAt = null;
   }
 
   /// Manda los ajustes nuevos al pase que está al aire.
@@ -226,20 +293,30 @@ class MarqueePlaybackNotifier extends Notifier<MarqueeOverlay?> {
 
     _timer = Timer(
       Duration(milliseconds: (duration.inMilliseconds * pending).round()),
-      () {
-        if (!ref.mounted) return;
-        state = null;
-        _startedAt = null;
-      },
+      _clear,
     );
   }
 
   /// Quita el mensaje de la pantalla y deja el reloj como estaba.
   void stop() {
     _timer?.cancel();
+    _noticeTimer?.cancel();
     _timer = null;
+    _noticeTimer = null;
     _startedAt = null;
     if (state != null) state = null;
+  }
+
+  /// Quita **solo** el aviso de una actividad y deja intacto un mensaje del
+  /// chat.
+  ///
+  /// Es lo que se usa al cambiar de actividad: el aviso pertenece a la actividad
+  /// que lo mandó, así que se va con ella. Un mensaje del chat no se toca, porque
+  /// ese lo mandó el operador a propósito y se queda cruzando hasta que termine
+  /// o él lo pare.
+  void stopNotice() {
+    if (!isNoticeOnAir) return;
+    stop();
   }
 }
 

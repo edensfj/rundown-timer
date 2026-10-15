@@ -6,6 +6,7 @@ import '../../core/ids.dart';
 import '../../core/duration_input.dart';
 import '../../core/time_formatters.dart';
 import '../../models/activity_item.dart';
+import '../../models/activity_notice.dart';
 import '../../models/event_day.dart';
 
 /// Resultado del formulario lateral.
@@ -85,6 +86,21 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
   /// Duración escrita a mano («30m», «1h30», «30s»). Vacío = se deduce.
   late final TextEditingController _durationController;
 
+  // --- Aviso en pantalla ------------------------------------------------------
+
+  /// Texto del aviso. Vacío = la actividad no avisa de nada.
+  late final TextEditingController _noticeController;
+
+  /// Cuánto cruza el aviso, cuando se limita por tiempo.
+  late final TextEditingController _noticeDurationController;
+
+  /// Cuántas veces cruza, cuando se limita por repeticiones.
+  late final TextEditingController _noticeRepeatsController;
+
+  NoticeTrigger _noticeTrigger = NoticeTrigger.onStart;
+  NoticeLimit _noticeLimit = NoticeLimit.duration;
+  bool _noticeShowTimer = true;
+
   late DateTime _startTime;
 
   /// Hora de fin explícita. `null` = se deduce de la siguiente actividad.
@@ -126,6 +142,18 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
       text: existing?.responsible ?? '',
     );
     _locationController = TextEditingController(text: existing?.location ?? '');
+
+    final notice = existing?.notice;
+    _noticeController = TextEditingController(text: notice?.text ?? '');
+    _noticeTrigger = notice?.trigger ?? NoticeTrigger.onStart;
+    _noticeLimit = notice?.limit ?? NoticeLimit.duration;
+    _noticeShowTimer = notice?.showTimer ?? true;
+    _noticeDurationController = TextEditingController(
+      text: formatDurationInput(notice?.duration ?? const Duration(minutes: 1)),
+    );
+    _noticeRepeatsController = TextEditingController(
+      text: '${notice?.repeats ?? 2}',
+    );
   }
 
   @override
@@ -135,6 +163,9 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
     _responsibleController.dispose();
     _locationController.dispose();
     _durationController.dispose();
+    _noticeController.dispose();
+    _noticeDurationController.dispose();
+    _noticeRepeatsController.dispose();
     super.dispose();
   }
 
@@ -144,6 +175,40 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
     final text = _durationController.text.trim();
     if (text.isEmpty) return null;
     return parseDuration(text) == null ? 'No entiendo esa duración' : null;
+  }
+
+  /// Error de la duración del aviso, si toca limitarlo por tiempo.
+  String? get _noticeDurationError {
+    if (_noticeLimit != NoticeLimit.duration) return null;
+    if (_noticeController.text.trim().isEmpty) return null;
+    return parseDuration(_noticeDurationController.text) == null
+        ? 'No entiendo esa duración'
+        : null;
+  }
+
+  /// Error del número de pasadas, si toca limitar el aviso por repeticiones.
+  String? get _noticeRepeatsError {
+    if (_noticeLimit != NoticeLimit.repeats) return null;
+    if (_noticeController.text.trim().isEmpty) return null;
+    final veces = int.tryParse(_noticeRepeatsController.text.trim());
+    return veces == null || veces < 1 ? 'Pon cuántas veces cruza' : null;
+  }
+
+  /// El aviso que hay escrito, o `null` si no hay nada que mandar.
+  ActivityNotice? _noticeOrNull() {
+    final text = _noticeController.text.trim();
+    if (text.isEmpty) return null;
+
+    return ActivityNotice(
+      text: text,
+      trigger: _noticeTrigger,
+      limit: _noticeLimit,
+      duration:
+          parseDuration(_noticeDurationController.text) ??
+          const Duration(minutes: 1),
+      repeats: int.tryParse(_noticeRepeatsController.text.trim()) ?? 2,
+      showTimer: _noticeShowTimer,
+    );
   }
 
   /// Rehace la hora de fin con lo que haya escrito en el campo de duración.
@@ -164,6 +229,11 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
   void _save() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     if (_durationError != null) return;
+    if (_noticeDurationError != null || _noticeRepeatsError != null) {
+      // Hay que repintar para que salga el error en el campo del aviso.
+      setState(() {});
+      return;
+    }
 
     final end = _endTime;
     if (end != null && !end.isAfter(_startTime)) {
@@ -181,6 +251,7 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
           description: _optional(_descriptionController.text),
           responsible: _optional(_responsibleController.text),
           location: _optional(_locationController.text),
+          notice: _noticeOrNull(),
         ),
       ),
     );
@@ -434,8 +505,131 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
               prefixIcon: Icon(Icons.place_outlined),
             ),
           ),
+
+          const SizedBox(height: 26),
+          _buildNoticeSection(theme, scheme),
         ],
       ),
+    );
+  }
+
+  /// Sección del aviso: un texto que sale a la pantalla solo, al empezar la
+  /// actividad o al terminarla.
+  ///
+  /// Va **plegada**: mientras no se escriba nada, la actividad se comporta como
+  /// siempre y el formulario no se llena de campos que no se usan. En cuanto hay
+  /// texto, aparecen las opciones.
+  Widget _buildNoticeSection(ThemeData theme, ColorScheme scheme) {
+    final hayTexto = _noticeController.text.trim().isNotEmpty;
+    final porTiempo = _noticeLimit == NoticeLimit.duration;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.campaign_outlined, size: 18, color: scheme.primary),
+            const SizedBox(width: 8),
+            Text('Aviso en pantalla', style: theme.textTheme.titleSmall),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Un texto que cruza solo, con el estilo de la marquesina. Déjalo '
+          'vacío si la actividad no avisa de nada.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _noticeController,
+          onChanged: (_) => setState(() {}),
+          maxLines: 2,
+          minLines: 1,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            labelText: 'Texto del aviso',
+            hintText: 'Pueden salir del salón',
+            prefixIcon: Icon(Icons.message_outlined),
+          ),
+        ),
+        if (hayTexto) ...[
+          const SizedBox(height: 16),
+          Text('¿Cuándo sale?', style: theme.textTheme.labelLarge),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<NoticeTrigger>(
+              segments: [
+                for (final trigger in NoticeTrigger.values)
+                  ButtonSegment(value: trigger, label: Text(trigger.label)),
+              ],
+              selected: {_noticeTrigger},
+              onSelectionChanged: (seleccion) =>
+                  setState(() => _noticeTrigger = seleccion.first),
+              style: SegmentedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('¿Cuánto se queda?', style: theme.textTheme.labelLarge),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<NoticeLimit>(
+              segments: [
+                for (final limit in NoticeLimit.values)
+                  ButtonSegment(value: limit, label: Text(limit.label)),
+              ],
+              selected: {_noticeLimit},
+              onSelectionChanged: (seleccion) =>
+                  setState(() => _noticeLimit = seleccion.first),
+              style: SegmentedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (porTiempo)
+            TextField(
+              controller: _noticeDurationController,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'Duración del aviso',
+                hintText: '1m · 30s',
+                prefixIcon: const Icon(Icons.timelapse_rounded),
+                errorText: _noticeDurationError,
+              ),
+            )
+          else
+            TextField(
+              controller: _noticeRepeatsController,
+              onChanged: (_) => setState(() {}),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(
+                labelText: 'Veces que cruza',
+                hintText: '2',
+                prefixIcon: const Icon(Icons.repeat_rounded),
+                errorText: _noticeRepeatsError,
+              ),
+            ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: _noticeShowTimer,
+            onChanged: (v) => setState(() => _noticeShowTimer = v),
+            title: const Text('Mostrar el reloj'),
+            subtitle: Text(
+              _noticeShowTimer
+                  ? 'El texto cruza mientras se ve la cuenta atrás.'
+                  : 'El aviso ocupa la pantalla entera.',
+            ),
+          ),
+        ],
+      ],
     );
   }
 

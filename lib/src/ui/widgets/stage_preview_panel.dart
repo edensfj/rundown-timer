@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/time_formatters.dart';
 import '../../models/countdown_phase.dart';
 import '../../state/countdown_provider.dart';
+import '../../state/marquee_provider.dart';
 import '../../state/quick_timer_provider.dart';
 import '../../state/run_show_provider.dart';
 import '../../state/stage_mode_provider.dart';
@@ -54,6 +55,7 @@ class StagePreviewPanel extends ConsumerWidget {
                   phase: snapshot.phase,
                   showClock: snapshot.showClock,
                   isStopped: snapshot.isStopped,
+                  marqueeOnAir: snapshot.marquee != null,
                 ),
               ],
             ),
@@ -107,6 +109,7 @@ class _StatusDot extends StatelessWidget {
     required this.phase,
     this.showClock = false,
     this.isStopped = false,
+    this.marqueeOnAir = false,
   });
 
   final CountdownPhase phase;
@@ -119,10 +122,19 @@ class _StatusDot extends StatelessWidget {
   /// una pantalla en negro—, así que el aviso es solo de aquí.
   final bool isStopped;
 
+  /// Hay un texto cruzando la pantalla. Manda sobre la fase cuando no hay nada
+  /// más en marcha: el escenario no está «en espera», está enseñando el mensaje.
+  final bool marqueeOnAir;
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final marquesina = marqueeOnAir && phase == CountdownPhase.idle;
+
     final accent = isStopped
-        ? Theme.of(context).colorScheme.outline
+        ? scheme.outline
+        : marquesina
+        ? scheme.primary
         : showClock
         ? Colors.white70
         : phase.accent;
@@ -139,6 +151,8 @@ class _StatusDot extends StatelessWidget {
         Text(
           isStopped
               ? 'DETENIDA'
+              : marquesina
+              ? 'MARQUESINA'
               : showClock
               ? 'HORA ACTUAL'
               : _label(phase),
@@ -249,6 +263,31 @@ class _PreviewDetails extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final marquee = ref.watch(marqueePlaybackProvider);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Lo que está cruzando manda sobre todo lo demás: es lo que ve la
+          // sala, y en directo hay que poder cortarlo sin abrir un diálogo.
+          if (marquee != null) ...[
+            _MarqueeOnAir(text: marquee.text),
+            const SizedBox(height: 14),
+          ],
+          _buildActivityDetails(context, ref, marqueeOnAir: marquee != null),
+        ],
+      ),
+    );
+  }
+
+  /// El detalle de la actividad en curso y sus controles.
+  Widget _buildActivityDetails(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool marqueeOnAir,
+  }) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final snapshot = ref.watch(countdownProvider);
@@ -257,102 +296,11 @@ class _PreviewDetails extends ConsumerWidget {
     // En modo reloj el detalle de la actividad no pinta nada: el escenario
     // enseña la hora. Se conserva el botón de abrir a pantalla completa.
     if (snapshot.showClock) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'El escenario muestra la hora actual.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Spacer(),
-                _PantallaButton(onOpenFullscreen: onOpenFullscreen),
-              ],
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (!snapshot.hasActivities) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Text(
-          snapshot.phase == CountdownPhase.idle
-              // En espera no hay actividad que mirar, pero tampoco es un fallo:
-              // el escenario está en negro porque todavía no empieza nada. El
-              // interruptor de la cuenta previa vive en Configuración.
-              ? 'El escenario está en espera: no hay nada en marcha. Al ejecutar '
-                    'una actividad o empezar el día aparecerá la cuenta atrás.'
-              : 'Agrega actividades para ver la vista previa.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
-      );
-    }
-
-    final current = snapshot.current!.item;
-    final quick = ref.watch(quickTimerProvider) != null;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-      child: Column(
+      return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (quick) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Contador rápido activo',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: () {
-                    ref.read(quickTimerProvider.notifier).clear();
-                    ref.read(runShowProvider.notifier).syncWithClock();
-                  },
-                  icon: const Icon(Icons.event_note_rounded, size: 16),
-                  label: const Text('Al itinerario'),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 2),
-          ],
           Text(
-            current.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            snapshot.isStopped
-                // El escenario está en negro a propósito: aquí se explica, que
-                // quien lo ve es el operador.
-                ? 'Detenida a mano · la sala ve la pantalla en negro'
-                : [
-                    if (!quick)
-                      'Actividad ${snapshot.index + 1} de ${snapshot.total}',
-                    if (snapshot.next != null)
-                      'siguiente ${TimeFormatters.time(snapshot.next!.startTime)}',
-                  ].join('  ·  '),
+            'El escenario muestra la hora actual.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: scheme.onSurfaceVariant,
             ),
@@ -360,46 +308,176 @@ class _PreviewDetails extends ConsumerWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              IconButton.outlined(
-                onPressed: () => run.togglePause(),
-                tooltip: snapshot.isPaused ? 'Reanudar' : 'Pausar',
-                isSelected: snapshot.isPaused,
-                icon: Icon(
-                  snapshot.isPaused
-                      ? Icons.play_arrow_rounded
-                      : Icons.pause_rounded,
-                ),
-              ),
-              const SizedBox(width: 6),
-              IconButton.outlined(
-                // Detener no es pausar: da la actividad por terminada aunque su
-                // hora de fin no hubiera llegado. Puliéndolo otra vez, vuelve a
-                // contar lo que le quedaba.
-                onPressed: () => run.toggleStop(),
-                tooltip: snapshot.isStopped
-                    ? 'Reanudar el conteo'
-                    : 'Detener la actividad',
-                isSelected: snapshot.isStopped,
-                icon: const Icon(Icons.stop_circle_outlined),
-              ),
-              const SizedBox(width: 6),
-              IconButton.outlined(
-                onPressed: () => run.goToNext(),
-                tooltip: 'Actividad siguiente',
-                icon: const Icon(Icons.skip_next_rounded),
-              ),
-              const SizedBox(width: 6),
-              IconButton.outlined(
-                onPressed: () => run.restart(),
-                tooltip: 'Reiniciar el conteo',
-                icon: const Icon(Icons.replay_rounded),
-              ),
               const Spacer(),
               _PantallaButton(onOpenFullscreen: onOpenFullscreen),
             ],
           ),
         ],
-      ),
+      );
+    }
+
+    if (!snapshot.hasActivities) {
+      return Text(
+        marqueeOnAir
+            ? 'La marquesina está al aire. Al ejecutar una actividad '
+                  'aparecerá la cuenta atrás.'
+            : snapshot.phase == CountdownPhase.idle
+            // En espera no hay actividad que mirar, pero tampoco es un fallo:
+            // el escenario está en negro porque todavía no empieza nada. El
+            // interruptor de la cuenta previa vive en Configuración.
+            ? 'El escenario está en espera: no hay nada en marcha. Al ejecutar '
+                  'una actividad o empezar el día aparecerá la cuenta atrás.'
+            : 'Agrega actividades para ver la vista previa.',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: scheme.onSurfaceVariant,
+        ),
+      );
+    }
+
+    final current = snapshot.current!.item;
+    final quick = ref.watch(quickTimerProvider) != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (quick) ...[
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Contador rápido activo',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () {
+                  ref.read(quickTimerProvider.notifier).clear();
+                  ref.read(runShowProvider.notifier).syncWithClock();
+                },
+                icon: const Icon(Icons.event_note_rounded, size: 16),
+                label: const Text('Al itinerario'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+        ],
+        Text(
+          current.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          snapshot.isStopped
+              // El escenario está en negro a propósito: aquí se explica, que
+              // quien lo ve es el operador.
+              ? 'Detenida a mano · la sala ve la pantalla en negro'
+              : [
+                  if (!quick)
+                    'Actividad ${snapshot.index + 1} de ${snapshot.total}',
+                  if (snapshot.next != null)
+                    'siguiente ${TimeFormatters.time(snapshot.next!.startTime)}',
+                ].join('  ·  '),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            IconButton.outlined(
+              onPressed: () => run.togglePause(),
+              tooltip: snapshot.isPaused ? 'Reanudar' : 'Pausar',
+              isSelected: snapshot.isPaused,
+              icon: Icon(
+                snapshot.isPaused
+                    ? Icons.play_arrow_rounded
+                    : Icons.pause_rounded,
+              ),
+            ),
+            const SizedBox(width: 6),
+            IconButton.outlined(
+              // Detener no es pausar: da la actividad por terminada aunque su
+              // hora de fin no hubiera llegado. Puliéndolo otra vez, vuelve a
+              // contar lo que le quedaba.
+              onPressed: () => run.toggleStop(),
+              tooltip: snapshot.isStopped
+                  ? 'Reanudar el conteo'
+                  : 'Detener la actividad',
+              isSelected: snapshot.isStopped,
+              icon: const Icon(Icons.stop_circle_outlined),
+            ),
+            const SizedBox(width: 6),
+            IconButton.outlined(
+              onPressed: () => run.goToNext(),
+              tooltip: 'Actividad siguiente',
+              icon: const Icon(Icons.skip_next_rounded),
+            ),
+            const SizedBox(width: 6),
+            IconButton.outlined(
+              onPressed: () => run.restart(),
+              tooltip: 'Reiniciar el conteo',
+              icon: const Icon(Icons.replay_rounded),
+            ),
+            const Spacer(),
+            _PantallaButton(onOpenFullscreen: onOpenFullscreen),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Aviso de que hay un texto cruzando, con el botón para cortarlo.
+///
+/// Va aquí arriba, en el panel, y no solo dentro del diálogo de la marquesina:
+/// en directo lo urgente es poder quitar el texto de la pantalla, y abrir un
+/// diálogo para pararlo es un paso de más justo cuando hay prisa.
+class _MarqueeOnAir extends ConsumerWidget {
+  const _MarqueeOnAir({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Row(
+      children: [
+        Icon(Icons.campaign_rounded, size: 18, color: scheme.primary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Marquesina al aire: «$text»',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: scheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        TextButton.icon(
+          onPressed: () => ref.read(marqueePlaybackProvider.notifier).stop(),
+          icon: const Icon(Icons.stop_circle_outlined, size: 16),
+          label: const Text('Detener'),
+          style: TextButton.styleFrom(
+            foregroundColor: scheme.error,
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+      ],
     );
   }
 }

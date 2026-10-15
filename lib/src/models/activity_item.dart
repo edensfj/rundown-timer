@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'activity_notice.dart';
+
 /// Una actividad del cronograma.
 ///
 /// Normalmente **no** lleva hora de fin: se deduce del `startTime` de la
@@ -17,6 +19,7 @@ class ActivityItem {
     this.description,
     this.responsible,
     this.location,
+    this.notice,
   });
 
   final String id;
@@ -40,6 +43,10 @@ class ActivityItem {
   /// Lugar o espacio. Opcional.
   final String? location;
 
+  /// Texto que sale a la pantalla al empezar o al terminar la actividad.
+  /// Opcional: sin aviso, la actividad se comporta como siempre.
+  final ActivityNotice? notice;
+
   bool get hasExplicitEnd => endTime != null;
 
   ActivityItem copyWith({
@@ -50,10 +57,12 @@ class ActivityItem {
     String? description,
     String? responsible,
     String? location,
+    ActivityNotice? notice,
     bool clearEndTime = false,
     bool clearDescription = false,
     bool clearResponsible = false,
     bool clearLocation = false,
+    bool clearNotice = false,
   }) {
     return ActivityItem(
       id: id ?? this.id,
@@ -63,6 +72,7 @@ class ActivityItem {
       description: clearDescription ? null : (description ?? this.description),
       responsible: clearResponsible ? null : (responsible ?? this.responsible),
       location: clearLocation ? null : (location ?? this.location),
+      notice: clearNotice ? null : (notice ?? this.notice),
     );
   }
 
@@ -74,6 +84,7 @@ class ActivityItem {
     'description': description,
     'responsible': responsible,
     'location': location,
+    'notice': notice?.toJson(),
   };
 
   factory ActivityItem.fromJson(Map<dynamic, dynamic> json) => ActivityItem(
@@ -84,6 +95,7 @@ class ActivityItem {
     description: _asString(json['description']),
     responsible: _asString(json['responsible']),
     location: _asString(json['location']),
+    notice: _asNotice(json['notice']),
   );
 
   static DateTime? _asDate(Object? value) {
@@ -97,6 +109,12 @@ class ActivityItem {
     return text.isEmpty ? null : text;
   }
 
+  static ActivityNotice? _asNotice(Object? value) {
+    if (value is! Map) return null;
+    final notice = ActivityNotice.fromJson(value.cast<dynamic, dynamic>());
+    return notice.isUsable ? notice : null;
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -107,7 +125,8 @@ class ActivityItem {
           other.endTime == endTime &&
           other.description == description &&
           other.responsible == responsible &&
-          other.location == location;
+          other.location == location &&
+          other.notice == notice;
 
   @override
   int get hashCode => Object.hash(
@@ -118,5 +137,6 @@ class ActivityItem {
     description,
     responsible,
     location,
+    notice,
   );
 }
