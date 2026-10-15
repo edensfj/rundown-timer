@@ -8,7 +8,10 @@ class PreviewVisibleNotifier extends Notifier<bool> {
   bool build() => true;
 
   void toggle() => state = !state;
+
+  void show() => state = true;
 }
 
-final previewVisibleProvider =
-    NotifierProvider<PreviewVisibleNotifier, bool>(PreviewVisibleNotifier.new);
+final previewVisibleProvider = NotifierProvider<PreviewVisibleNotifier, bool>(
+  PreviewVisibleNotifier.new,
+);

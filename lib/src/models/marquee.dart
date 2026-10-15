@@ -221,15 +221,22 @@ class MarqueeOverlay {
 
   /// Cambia los ajustes del pase sin cambiar de pase: es el mismo mensaje
   /// cruzando la pantalla, con otra velocidad, otro tamaño u otro grosor.
-  MarqueeOverlay copyWith({MarqueeSettings? settings, Duration? duration}) =>
-      MarqueeOverlay(
-        runId: runId,
-        messageId: messageId,
-        text: text,
-        settings: settings ?? this.settings,
-        duration: duration ?? this.duration,
-        loop: loop,
-      );
+  ///
+  /// También sirve para editar el mensaje al aire —el texto o el bucle—, que es
+  /// el otro caso de «es el mismo pase, con otro contenido».
+  MarqueeOverlay copyWith({
+    String? text,
+    MarqueeSettings? settings,
+    Duration? duration,
+    bool? loop,
+  }) => MarqueeOverlay(
+    runId: runId,
+    messageId: messageId,
+    text: text ?? this.text,
+    settings: settings ?? this.settings,
+    duration: duration ?? this.duration,
+    loop: loop ?? this.loop,
+  );
 
   /// Compara el pase entero, ajustes y duración incluidos. Si solo se mirara el
   /// `runId`, un cambio de ajustes no parecería un cambio y el escenario —que

@@ -13,6 +13,7 @@ class RunShowControls extends StatelessWidget {
     required this.onPrevious,
     required this.onNext,
     required this.onTogglePause,
+    required this.onToggleStopped,
     required this.onRestart,
     required this.onToggleAutomatic,
     required this.onToggleFinished,
@@ -24,6 +25,10 @@ class RunShowControls extends StatelessWidget {
   final VoidCallback onPrevious;
   final VoidCallback onNext;
   final VoidCallback onTogglePause;
+
+  /// Termina (o reanuda) la actividad que está en pantalla.
+  final VoidCallback onToggleStopped;
+
   final VoidCallback onRestart;
   final VoidCallback onToggleAutomatic;
   final VoidCallback onToggleFinished;
@@ -61,6 +66,16 @@ class RunShowControls extends StatelessWidget {
             tooltip: snapshot.isPaused ? 'Reanudar' : 'Pausar',
             onPressed: onTogglePause,
             highlighted: snapshot.isPaused,
+          ),
+          const SizedBox(width: 4),
+          _ControlButton(
+            // Detener no es pausar: la actividad se da por terminada aunque su
+            // hora de fin no hubiera llegado. Es lo que se pulsa cuando alguien
+            // se adelanta o se corta el momento.
+            icon: Icons.stop_circle_outlined,
+            tooltip: snapshot.isStopped ? 'Reanudar el conteo' : 'Detener',
+            onPressed: onToggleStopped,
+            highlighted: snapshot.isStopped,
           ),
           const SizedBox(width: 4),
           _ControlButton(

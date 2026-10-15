@@ -13,8 +13,10 @@ import '../core/app_config.dart';
 import '../models/countdown_phase.dart';
 import '../models/countdown_snapshot.dart';
 import '../state/countdown_provider.dart';
+import '../state/run_show_provider.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/stage_view.dart';
+import 'stage_run_command.dart';
 import 'window_placement.dart';
 
 /// La ventana del escenario se abre en **su propio motor de Flutter**, así que
@@ -44,13 +46,13 @@ class StageWindowArgs {
   String encode() => jsonEncode(toJson());
 
   Map<String, dynamic> toJson() => {
-        'role': 'stage',
-        'x': x,
-        'y': y,
-        'width': width,
-        'height': height,
-        'fullscreen': fullscreen,
-      };
+    'role': 'stage',
+    'x': x,
+    'y': y,
+    'width': width,
+    'height': height,
+    'fullscreen': fullscreen,
+  };
 
   /// `null` cuando los argumentos no son de la ventana del escenario, es decir,
   /// cuando estamos en la ventana principal.
@@ -89,8 +91,8 @@ class RemoteSnapshotNotifier extends Notifier<CountdownSnapshot> {
 
 final remoteSnapshotProvider =
     NotifierProvider<RemoteSnapshotNotifier, CountdownSnapshot>(
-  RemoteSnapshotNotifier.new,
-);
+      RemoteSnapshotNotifier.new,
+    );
 
 /// Orden con la que el panel manda cerrarse al escenario cuando va en su propio
 /// proceso: llega por la entrada estándar, como las instantáneas.
@@ -124,13 +126,13 @@ class StageWindowCommand {
   String encode() => jsonEncode(toJson());
 
   Map<String, dynamic> toJson() => {
-        stageWindowCommandKey: stageWindowCommand,
-        'x': frame.left,
-        'y': frame.top,
-        'width': frame.width,
-        'height': frame.height,
-        'fullscreen': fullscreen,
-      };
+    stageWindowCommandKey: stageWindowCommand,
+    'x': frame.left,
+    'y': frame.top,
+    'width': frame.width,
+    'height': frame.height,
+    'fullscreen': fullscreen,
+  };
 
   /// `null` si lo recibido no es una orden de ventana: entonces es una
   /// instantánea del reloj.
@@ -178,6 +180,14 @@ Future<void> runStageWindow(
 ) async {
   final container = _stageContainer();
 
+  // En Windows y macOS las órdenes de los botones viajan por el canal del
+  // plugin, en sentido contrario al del reloj.
+  stageRunSender = (command) {
+    unawaited(
+      controller.invokeMethod(StageRunCommand.channelKey, command.toJson()),
+    );
+  };
+
   await controller.setWindowMethodHandler((call) async {
     switch (call.method) {
       case 'update':
@@ -222,6 +232,10 @@ Future<void> runStageWindow(
 /// instantánea por línea, en JSON.
 Future<void> runStageProcess(StageWindowArgs args) async {
   final container = _stageContainer();
+
+  // En Linux el escenario es otro proceso: sus botones salen por su salida
+  // estándar, que el panel ya tiene abierta.
+  stageRunSender = sendStageRunCommandByStdout;
 
   // La tubería se cierra cuando el panel se va. Mejor cerrar que quedarse
   // proyectando un reloj congelado en una ventana huérfana.
@@ -310,13 +324,17 @@ Future<void> applyStageWindowCommand(StageWindowCommand command) async {
 /// El contenedor del escenario, con el reloj sustituido por lo que llega de
 /// fuera.
 ProviderContainer _stageContainer() => ProviderContainer(
-      overrides: [
-        // Todo lo que pinta el escenario lee de [countdownProvider]; con esta
-        // sustitución, lo que llega por el canal se ve exactamente igual que si
-        // se hubiera calculado aquí.
-        countdownProvider.overrideWith((ref) => ref.watch(remoteSnapshotProvider)),
-      ],
-    );
+  overrides: [
+    // Todo lo que pinta el escenario lee de [countdownProvider]; con esta
+    // sustitución, lo que llega por el canal se ve exactamente igual que si
+    // se hubiera calculado aquí.
+    countdownProvider.overrideWith((ref) => ref.watch(remoteSnapshotProvider)),
+
+    // Y los botones no manejan un reloj propio —que no pinta nada—, sino que
+    // le piden al panel que lo haga.
+    runShowProvider.overrideWith(StageRunBridge.new),
+  ],
+);
 
 /// Pone la ventana del escenario donde le dijeron. Igual en los dos caminos.
 Future<void> _prepareStageWindow(StageWindowArgs args) async {
@@ -380,10 +398,7 @@ class StageWindowApp extends ConsumerWidget {
       title: AppConfig.stageWindowTitle,
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
-      home: const Material(
-        color: StageColors.black,
-        child: StageView(),
-      ),
+      home: const Material(color: StageColors.black, child: StageView()),
     );
   }
 }

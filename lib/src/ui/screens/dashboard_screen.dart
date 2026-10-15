@@ -6,18 +6,24 @@ import '../../core/time_formatters.dart';
 import '../../models/activity_item.dart';
 import '../../models/countdown_snapshot.dart';
 import '../../models/event_day.dart';
+import '../../models/scheduled_activity.dart';
 import '../../state/displays_provider.dart';
 import '../../state/rundown_provider.dart';
+import '../../state/run_show_provider.dart';
 import '../../state/schedule_provider.dart';
+import '../../state/stage_flash_settings_provider.dart';
 import '../../state/ui_state_provider.dart';
 import '../widgets/activity_card.dart';
+import '../widgets/app_about_dialog.dart';
 import '../widgets/activity_form_drawer.dart';
 import '../widgets/activity_preview_dialog.dart';
 import '../widgets/day_selector.dart';
+import '../widgets/settings_dialog.dart';
 import '../widgets/live_clock_header.dart';
 import '../widgets/marquee_dialog.dart';
+import '../widgets/on_air_banner.dart';
 import '../widgets/quick_timer_dialog.dart';
-import '../widgets/rundown_transfer_button.dart';
+
 import '../widgets/screen_picker_dialog.dart';
 import '../widgets/stage_preview_panel.dart';
 import '../widgets/templates_dialog.dart';
@@ -62,7 +68,11 @@ class DashboardScreen extends ConsumerWidget {
             tooltip: 'Marquesina (mensajes en pantalla)',
             icon: const Icon(Icons.campaign_rounded),
           ),
-          const RundownTransferButton(),
+          IconButton(
+            onPressed: () => SettingsDialog.show(context),
+            tooltip: 'Configuración (parpadeos, archivos, escenario)',
+            icon: const Icon(Icons.settings_outlined),
+          ),
           IconButton(
             onPressed: () => _addQuickTimer(context, ref),
             tooltip: 'Contador rápido (fuera del itinerario)',
@@ -77,6 +87,11 @@ class DashboardScreen extends ConsumerWidget {
             icon: const Icon(Icons.picture_in_picture_alt_rounded),
           ),
           const _ScreenAction(),
+          IconButton(
+            onPressed: () => AppAboutDialog.show(context),
+            tooltip: 'Acerca de Rundown Timer',
+            icon: const Icon(Icons.info_outline_rounded),
+          ),
           const SizedBox(width: 8),
         ],
       ),
@@ -85,11 +100,13 @@ class DashboardScreen extends ConsumerWidget {
           Expanded(
             child: Column(
               children: [
-                LiveClockHeader(contextLabel: day?.name),
+                LiveClockHeader(),
                 if (rundownState.hasError)
                   _ErrorBanner(message: '${rundownState.error}')
-                else
+                else ...[
                   DaySelector(onAddDay: () => _createDay(context, ref)),
+                  const OnAirBanner(),
+                ],
                 Expanded(
                   child: day == null
                       ? const _EmptyState()
@@ -120,8 +137,13 @@ class DashboardScreen extends ConsumerWidget {
                                 CountdownSnapshot.preview(
                                   slots: schedule,
                                   index: index,
+                                  flashSettings: ref.read(
+                                    stageFlashSettingsProvider,
+                                  ),
                                 ),
                               ),
+                              onRun: () =>
+                                  _runActivity(context, ref, index, slot, day),
                             );
                           },
                         ),
@@ -147,6 +169,8 @@ class DashboardScreen extends ConsumerWidget {
             ),
         ],
       ),
+      // Los dos botones de la esquina son del mismo tamaño y forma: uno es un píldora
+      // y el otro un círculo, y eso hace que parezca que uno se ha colado.
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -156,17 +180,12 @@ class DashboardScreen extends ConsumerWidget {
               final stage = ref.watch(stageWindowProvider);
               final abierto = stage.isOpen;
 
-              return FloatingActionButton.extended(
+              return FloatingActionButton(
                 heroTag: 'runShow',
                 onPressed: onAir.isEmpty
                     ? null
                     : () => _toggleStage(context, ref),
-                icon: Icon(
-                  abierto
-                      ? Icons.stop_circle_outlined
-                      : Icons.slideshow_rounded,
-                ),
-                label: Text(abierto ? 'Cerrar escenario' : 'Abrir escenario'),
+                tooltip: abierto ? 'Cerrar escenario' : 'Abrir escenario',
                 // Abierto, el botón avisa de dónde está saliendo el reloj.
                 backgroundColor: abierto
                     ? Theme.of(context).colorScheme.errorContainer
@@ -174,10 +193,15 @@ class DashboardScreen extends ConsumerWidget {
                 foregroundColor: abierto
                     ? Theme.of(context).colorScheme.onErrorContainer
                     : null,
+                child: Icon(
+                  abierto
+                      ? Icons.stop_circle_outlined
+                      : Icons.slideshow_rounded,
+                ),
               );
             },
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           FloatingActionButton(
             heroTag: 'addActivity',
             // Sin días no hay nada que desactivar: el botón crea el día de
@@ -271,6 +295,30 @@ class DashboardScreen extends ConsumerWidget {
     }
   }
 
+  /// Pone una actividad en el escenario y la empieza ahora mismo.
+  ///
+  /// El día de la tarjeta **toma el aire**: mientras esa actividad esté en
+  /// pantalla, seguir con otro día en la lista no mueve la proyección.
+  Future<void> _runActivity(
+    BuildContext context,
+    WidgetRef ref,
+    int index,
+    ScheduledActivity slot,
+    EventDay day,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final notifier = ref.read(runShowProvider.notifier);
+
+    notifier.runActivity(index, dayId: day.id);
+
+    final panel = ref.read(previewVisibleProvider);
+    if (!panel) ref.read(previewVisibleProvider.notifier).show();
+
+    messenger.showSnackBar(
+      SnackBar(content: Text('«${slot.item.title}» está en el escenario')),
+    );
+  }
+
   Future<void> _confirmDelete(
     BuildContext context,
     WidgetRef ref,
@@ -280,11 +328,6 @@ class DashboardScreen extends ConsumerWidget {
     final notifier = ref.read(rundownProvider.notifier);
     final messenger = ScaffoldMessenger.of(context);
 
-    // El «deshacer» guarda la actividad otra vez: si el día se está ejecutando
-    // hoy, lo que llega de la lista lleva las fechas de hoy y hay que volver a
-    // las suyas antes de escribirlo.
-    final stored = day.storedActivity(item);
-
     await notifier.deleteActivity(day.id, item.id);
 
     messenger.showSnackBar(
@@ -292,7 +335,7 @@ class DashboardScreen extends ConsumerWidget {
         content: Text('«${item.title}» eliminada'),
         action: SnackBarAction(
           label: 'Deshacer',
-          onPressed: () => notifier.saveActivity(dayId: day.id, item: stored),
+          onPressed: () => notifier.saveActivity(dayId: day.id, item: item),
         ),
       ),
     );

@@ -75,10 +75,9 @@ class _QuickTimerDialogState extends ConsumerState<QuickTimerDialog> {
 
   void _iniciar() {
     if (!_valido) return;
-    ref.read(quickTimerProvider.notifier).start(
-          duration: _duracion,
-          label: _etiqueta.text,
-        );
+    ref
+        .read(quickTimerProvider.notifier)
+        .start(duration: _duracion, label: _etiqueta.text);
     Navigator.of(context).pop(true);
   }
 
@@ -105,8 +104,9 @@ class _QuickTimerDialogState extends ConsumerState<QuickTimerDialog> {
               Text(
                 'Un conteo suelto, independiente del itinerario. Útil para un '
                 'aviso, un descanso o una dinámica improvisada.',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 20),
 
@@ -174,7 +174,10 @@ class _QuickTimerDialogState extends ConsumerState<QuickTimerDialog> {
               const SizedBox(height: 20),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
                   color: _valido
                       ? scheme.primaryContainer.withValues(alpha: 0.45)
@@ -184,7 +187,9 @@ class _QuickTimerDialogState extends ConsumerState<QuickTimerDialog> {
                 child: Row(
                   children: [
                     Icon(
-                      _valido ? Icons.timer_outlined : Icons.error_outline_rounded,
+                      _valido
+                          ? Icons.timer_outlined
+                          : Icons.error_outline_rounded,
                       size: 20,
                       color: _valido ? scheme.primary : scheme.error,
                     ),

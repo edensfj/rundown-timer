@@ -6,19 +6,23 @@ const _unset = Object();
 /// corre el reloj.
 ///
 /// Toda la matemática del temporizador se apoya en un único concepto:
-/// el **tiempo efectivo**, es decir `ahora` congelado si está en pausa y
-/// corregido por el [offset] acumulado.
+/// el **tiempo efectivo**, es decir `ahora` congelado si está en pausa.
 ///
 /// ```dart
-/// effectiveNow = (pausedAt ?? ahora).subtract(offset)
+/// effectiveNow = pausedAt ?? ahora
 /// remaining    = endTime - effectiveNow
 /// ```
+///
+/// Los desfases del directo —empezar una actividad a mano, darle un minuto
+/// más— no se hacen moviendo este reloj, sino desplazando el **plan**
+/// ([planShiftProvider]): así las horas que se ven en el escenario son las de
+/// verdad y no las que estaban programadas hace media hora.
 @immutable
 class RunShowState {
   const RunShowState({
     this.indexOverride,
     this.pausedAt,
-    this.offset = Duration.zero,
+    this.stopped = false,
     this.eventFinished = false,
     this.sourceId,
   });
@@ -35,8 +39,13 @@ class RunShowState {
   /// Instante en el que se pausó. `null` significa que está corriendo.
   final DateTime? pausedAt;
 
-  /// Desplazamiento acumulado por pausas y reinicios.
-  final Duration offset;
+  /// El operador terminó la actividad que está en pantalla.
+  ///
+  /// No es una pausa: la actividad se da por **acabada** aunque su hora de fin
+  /// no hubiera llegado todavía (terminó antes, o se cortó). El conteo se queda
+  /// en cero, sin parpadeo de retraso, y de ahí solo se sale pulsando
+  /// «siguiente» o volviendo a arrancarla.
+  final bool stopped;
 
   /// El usuario cerró el evento.
   final bool eventFinished;
@@ -53,13 +62,14 @@ class RunShowState {
   /// `true` en cuanto hay una actividad fija en pantalla.
   bool get hasOverride => indexOverride != null;
 
-  /// Reloj de referencia del temporizador, corregido por pausa y offset.
-  DateTime effectiveNow(DateTime now) => (pausedAt ?? now).subtract(offset);
+  /// Reloj de referencia del temporizador: el de ahora, congelado si está en
+  /// pausa.
+  DateTime effectiveNow(DateTime now) => pausedAt ?? now;
 
   RunShowState copyWith({
     Object? indexOverride = _unset,
     Object? pausedAt = _unset,
-    Duration? offset,
+    bool? stopped,
     bool? eventFinished,
     String? sourceId,
   }) {
@@ -70,7 +80,7 @@ class RunShowState {
       pausedAt: identical(pausedAt, _unset)
           ? this.pausedAt
           : pausedAt as DateTime?,
-      offset: offset ?? this.offset,
+      stopped: stopped ?? this.stopped,
       eventFinished: eventFinished ?? this.eventFinished,
       sourceId: sourceId ?? this.sourceId,
     );
@@ -82,11 +92,11 @@ class RunShowState {
       other is RunShowState &&
           other.indexOverride == indexOverride &&
           other.pausedAt == pausedAt &&
-          other.offset == offset &&
+          other.stopped == stopped &&
           other.eventFinished == eventFinished &&
           other.sourceId == sourceId;
 
   @override
   int get hashCode =>
-      Object.hash(indexOverride, pausedAt, offset, eventFinished, sourceId);
+      Object.hash(indexOverride, pausedAt, stopped, eventFinished, sourceId);
 }

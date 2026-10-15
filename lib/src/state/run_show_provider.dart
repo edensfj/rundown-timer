@@ -3,29 +3,58 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/run_show_state.dart';
 import '../models/scheduled_activity.dart';
 import 'clock_provider.dart';
+import 'on_air_provider.dart';
 import 'schedule_provider.dart';
 
 /// Estado del temporizador del modo escenario.
 ///
-/// Depende de `stageSourceIdProvider`: al cambiar de fuente (de día o entre
-/// itinerario y contador) el notifier se reconstruye y el estado vuelve a cero,
-/// así que nunca queda apuntando a un índice que ya no existe.
+/// Lo que se ve aquí es el del programa **que se está proyectando**, que no siempre
+/// es el que el operador está mirando: el estado vive en [runStoreProvider]
+/// guardado por fuente, así que revisar el guion de otro día no borra el directo
+/// ni su desfase de plan, y al volver se encuentra todo como estaba.
 ///
 /// El programa **no avanza solo**: cuando llega la hora de la primera actividad
 /// se fija el índice y de ahí en adelante la pantalla se queda en esa actividad
 /// —pase lo que pase, aunque se retrase— hasta que el operador pulse «siguiente».
 /// Un rundown se lleva con la sala, no con el reloj, y en directo el reloj va
 /// siempre por detrás. Lo único que arranca solo es el evento: antes de que
-/// llegue, el escenario muestra la cuenta atrás previa.
+/// llegue, el escenario muestra la cuenta atrás previa —si el operador la ha
+/// dejado proyectada—.
 class RunShowNotifier extends Notifier<RunShowState> {
   @override
   RunShowState build() {
     final source = ref.watch(stageSourceIdProvider);
+    // Se **observa**, no se lee: así cualquier cambio del almacén —pausar,
+    // detener, sumar un minuto— reconstruye esto y llega a la pantalla, aunque
+    // no haya cambiado de día.
+    final store = ref.watch(runStoreProvider);
 
     ref.listen(clockProvider, (previous, next) => _fijarAlEmpezar(next));
 
-    return RunShowState(sourceId: source);
+    return store[source] ?? RunShowState(sourceId: source);
   }
+
+  /// Estado **de la fuente que se está proyectando ahora mismo**, leído del
+  /// almacén y no de aquí: si hace un momento cambió el aire, lo que llevaría
+  /// este notifier es el estado del programa anterior.
+  RunShowState get _current => _storedFor(ref.read(stageSourceIdProvider));
+
+  /// Estado guardado de la fuente [source], o uno nuevo si esa fuente aún no ha
+  /// tenido directo.
+  ///
+  /// Va en un almacén aparte y no en el propio notifier porque este se
+  /// reconstruye al cambiar de fuente: si el estado viviera aquí, mirar el guion
+  /// de otro día —o poner en marcha el suyo— borraría el directo que estaba en
+  /// marcha. Guardándolo por fuente, cada programa conserva el suyo y solo se
+  /// pierde lo que no se ha hecho aún.
+  RunShowState _storedFor(String? source) {
+    final saved = ref.read(runStoreProvider)[source];
+    return saved ?? RunShowState(sourceId: source);
+  }
+
+  /// Todo cambio pasa por aquí, para que quede guardado por fuente y no se pierda
+  /// al cambiar de programa.
+  void _set(RunShowState next) => ref.read(runStoreProvider.notifier).put(next);
 
   /// Fija la actividad en la que arranca el evento, una sola vez.
   ///
@@ -33,90 +62,165 @@ class RunShowNotifier extends Notifier<RunShowState> {
   /// espera (cuenta atrás previa). En cuanto llega, el índice se clava y deja de
   /// seguir al reloj.
   void _fijarAlEmpezar(DateTime now) {
-    if (state.indexOverride != null) return;
+    if (_current.indexOverride != null) return;
 
     final schedule = ref.read(activeScheduleProvider);
     if (schedule.isEmpty) return;
 
-    final index = resolveRunIndex(schedule, state.effectiveNow(now));
+    final index = resolveRunIndex(schedule, _current.effectiveNow(now));
     if (index < 0) return;
 
-    state = state.copyWith(indexOverride: index);
+    _set(_current.copyWith(indexOverride: index));
   }
 
   List<ScheduledActivity> get _schedule => ref.read(activeScheduleProvider);
 
-  /// Avanza manualmente. Queda fijado al índice alcanzado hasta que el operador
-  /// vuelva al modo automático.
+  /// Avanza manualmente. Queda fijado al índice alcanzado: el programa no vuelve
+  /// solo al reloj.
   void goToNext() {
     final schedule = _schedule;
     if (schedule.isEmpty) return;
-    final current = _currentIndex();
-    final next = (current + 1).clamp(0, schedule.length - 1);
-    state = state.copyWith(indexOverride: next, eventFinished: false);
+    _moveTo((_currentIndex() + 1).clamp(0, schedule.length - 1));
   }
 
   void goToPrevious() {
     final schedule = _schedule;
     if (schedule.isEmpty) return;
-    final next = (_currentIndex() - 1).clamp(0, schedule.length - 1);
-    state = state.copyWith(indexOverride: next, eventFinished: false);
+    _moveTo((_currentIndex() - 1).clamp(0, schedule.length - 1));
   }
 
   void goToIndex(int index) {
     final schedule = _schedule;
     if (schedule.isEmpty) return;
-    state = state.copyWith(
-      indexOverride: index.clamp(0, schedule.length - 1),
-      eventFinished: false,
+    _moveTo(index.clamp(0, schedule.length - 1));
+  }
+
+  /// Pone [index] en el escenario **empezando ahora**.
+  ///
+  /// Es el botón «ejecutar» de una tarjeta: salta a esa actividad y la pone en
+  /// marcha desde cero, con su duración completa, y con las horas reales de este
+  /// momento.
+  ///
+  /// Con [dayId] ese día **toma el aire**: ejecutar algo es la forma clara de
+  /// decir que ese programa es el que se proyecta, aunque el operador luego se
+  /// vaya a mirar otro día.
+  void runActivity(int index, {String? dayId}) {
+    if (dayId != null) ref.read(onAirDayIdProvider.notifier).take(dayId);
+
+    final schedule = _schedule;
+    if (schedule.isEmpty) return;
+    _moveTo(index.clamp(0, schedule.length - 1), unpause: true);
+  }
+
+  /// Coloca la pantalla en [index] como si empezara en este instante.
+  ///
+  /// Lo que se mueve es el **plan**, no un reloj interno: la actividad elegida
+  /// pasa a empezar ahora y las siguientes caen donde toque, así que el
+  /// escenario enseña horas de verdad —inicio, fin, término programado y la
+  /// siguiente— en vez de las que estaban programadas. Con eso, saltar a una
+  /// actividad que aún no había llegado cuenta su duración entera y no la hora
+  /// que le quedaba al plan.
+  void _moveTo(int index, {bool unpause = false}) {
+    final schedule = _schedule;
+    if (schedule.isEmpty) return;
+
+    // Del almacén y no de aquí: si hace un momento el aire pasó a otro día, lo
+    // que llevaría este notifier es el estado del programa anterior, y fijar la
+    // actividad sobre ese estado la guardaría en el día equivocado.
+    final base = _current;
+
+    final safe = index.clamp(0, schedule.length - 1);
+    final slot = schedule[safe];
+    final effectiveNow = base.effectiveNow(ref.read(clockProvider));
+
+    // El plan ya trae aplicado el desfase anterior, así que esta resta es lo que
+    // falta por mover para que la actividad empiece justo ahora.
+    _shiftPlanBy(effectiveNow.difference(slot.startTime));
+
+    _set(
+      base.copyWith(
+        indexOverride: safe,
+        pausedAt: unpause ? null : base.pausedAt,
+        // Una actividad nueva nunca nace detenida.
+        stopped: false,
+        eventFinished: false,
+      ),
     );
   }
 
-  /// Vuelve a la actividad que marca la hora de ahora.
-  ///
-  /// No reactiva el avance automático —eso no existe—: solo recoloca la pantalla
-  /// en la actividad que correspondería a este momento, por ejemplo después de
-  /// haber ido saltando a mano o al abrir la app con el evento ya empezado.
-  void syncWithClock() => state = state.copyWith(indexOverride: null);
+  /// Mueve el plan de la fuente que se está proyectando. Cada día lleva la cuenta
+  /// aparte: el desfase de un directo no puede arrastrar al guion de otro.
+  void _shiftPlanBy(Duration delta) => ref
+      .read(planShiftStoreProvider.notifier)
+      .add(ref.read(stageSourceIdProvider) ?? '', delta);
 
-  void togglePause() {
-    if (state.isPaused) {
-      final now = DateTime.now();
-      final pausedFor = now.difference(state.pausedAt!);
-      state = state.copyWith(pausedAt: null, offset: state.offset + pausedFor);
-    } else {
-      state = state.copyWith(pausedAt: DateTime.now());
-    }
+  /// Vuelve a la actividad que marca la hora de ahora, y al plan original.
+  ///
+  /// No reactiva el avance automático —eso no existe—: recoloca la pantalla en
+  /// la actividad que correspondería a este momento y deshace los desfases que
+  /// se hayan hecho a mano. Es también la vuelta atrás del «día en el aire»: desde
+  /// aquí el escenario vuelve a seguir al día que se esté viendo.
+  void syncWithClock() {
+    ref
+        .read(planShiftStoreProvider.notifier)
+        .reset(ref.read(stageSourceIdProvider) ?? '');
+    ref.read(onAirDayIdProvider.notifier).release();
+    _set(
+      _current.copyWith(
+        indexOverride: null,
+        stopped: false,
+        eventFinished: false,
+      ),
+    );
   }
 
-  /// Reinicia el conteo de la actividad actual: vuelve a cero el tiempo
-  /// consumido, sin tocar la hora de fin programada.
+  /// Termina la actividad que está en pantalla.
+  ///
+  /// No es pausar: dar por buena una actividad que se acabó antes de su hora, o
+  /// que se cortó a media. El conteo queda en cero y **no** suena la alerta de
+  /// retraso —no se ha perdido tiempo, se ha terminado antes— y el escenario lo
+  /// enseña como detenida. Volver a pulsar la reanuda con lo que le quedaba.
+  void toggleStop() {
+    final schedule = _schedule;
+    if (schedule.isEmpty) return;
+
+    final base = _current;
+    _set(base.copyWith(stopped: !base.stopped, pausedAt: null));
+  }
+
+  void togglePause() {
+    final base = _current;
+    if (!base.isPaused) {
+      _set(base.copyWith(pausedAt: DateTime.now()));
+      return;
+    }
+
+    // Lo que duró la pausa se corre el plan: al reanudar, el conteo sigue donde
+    // se quedó en vez de comerse el tiempo que estuvo parado.
+    final pausedFor = DateTime.now().difference(base.pausedAt!);
+    _shiftPlanBy(pausedFor);
+    _set(base.copyWith(pausedAt: null));
+  }
+
+  /// Reinicia el conteo de la actividad actual: vuelve a empezar desde su
+  /// duración completa, como si arrancara en este momento.
   void restart() {
     final schedule = _schedule;
     if (schedule.isEmpty) return;
-    final index = _currentIndex();
-    final slot = schedule[index];
-    final now = ref.read(clockProvider);
-    final effectiveNow = state.effectiveNow(now);
-    // Desplazamos el reloj efectivo hasta el inicio de la actividad.
-    state = state.copyWith(
-      offset: state.offset + effectiveNow.difference(slot.startTime),
-      pausedAt: null,
-    );
+    _moveTo(_currentIndex(), unpause: true);
   }
 
-  void finishEvent() => state = state.copyWith(eventFinished: true);
+  void finishEvent() => _set(_current.copyWith(eventFinished: true));
 
-  void resumeEvent() => state = state.copyWith(eventFinished: false);
+  void resumeEvent() => _set(_current.copyWith(eventFinished: false));
 
   /// Suma (o resta, con delta negativo) tiempo al conteo en curso.
   ///
-  /// Funciona desplazando el reloj efectivo, no la hora de fin, así que sirve
-  /// igual para el itinerario y para un contador suelto: si alguien necesita
-  /// dos minutos más, el fin programado no se toca, solo se corre el tiempo.
-  void addTime(Duration delta) {
-    state = state.copyWith(offset: state.offset + delta);
-  }
+  /// Corre el plan entero: el fin de la actividad que está en pantalla y también
+  /// el inicio de las siguientes. Si a alguien le hacen falta dos minutos, se
+  /// los lleva —y el resto del programa se retrasa con él—, pero el guion
+  /// guardado no se toca.
+  void addTime(Duration delta) => _shiftPlanBy(delta);
 
   /// Índice efectivo: el fijado si lo hay, si no el que deduce el reloj.
   ///
@@ -126,13 +230,34 @@ class RunShowNotifier extends Notifier<RunShowState> {
     final schedule = _schedule;
     if (schedule.isEmpty) return 0;
 
-    final override = state.indexOverride;
+    final base = _current;
+    final override = base.indexOverride;
     if (override != null) return override.clamp(0, schedule.length - 1);
 
-    final auto = resolveRunIndex(schedule, state.effectiveNow(DateTime.now()));
+    final auto = resolveRunIndex(
+      schedule,
+      base.effectiveNow(ref.read(clockProvider)),
+    );
     return auto < 0 ? 0 : auto;
   }
 }
+
+/// Estado del directo de cada programa, indexado por [stageSourceIdProvider].
+///
+/// Es lo que sobrevive a los cambios de fuente: el notifier se reconstruye al
+/// cambiar de día y este mapa le devuelve el estado que tenía ese día, con su
+/// actividad en pantalla y sus marcas de pausa o de parada.
+class RunShowStore extends Notifier<Map<String?, RunShowState>> {
+  @override
+  Map<String?, RunShowState> build() => const {};
+
+  void put(RunShowState next) => state = {...state, next.sourceId: next};
+}
+
+final runStoreProvider =
+    NotifierProvider<RunShowStore, Map<String?, RunShowState>>(
+      RunShowStore.new,
+    );
 
 final runShowProvider = NotifierProvider<RunShowNotifier, RunShowState>(
   RunShowNotifier.new,

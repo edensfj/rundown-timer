@@ -1,0 +1,58 @@
+<!--
+  Marca de agua del escenario en espera: el icono de la app, monocromo.
+
+  Es rundown-icon.svg con la misma geometría exacta —cuadrado redondeado, esfera,
+  marcas, manecillas y eje— pero en un solo color, blanco, porque sobre el negro
+  del escenario el índigo no contrasta y una marca de agua tiene que ser una
+  sombra clara, no un bloque de color.
+
+  Cómo se conserva el parecido pese a ser un solo color: el cuadrado va a media
+  opacidad y la esfera a opacidad completa, replicando la relación de brillo del
+  original (fondo índigo oscuro, esfera blanca). Las manecillas, las marcas y el
+  eje van recortados en la esfera, igual que en el original van en oscuro.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+
+  <defs>
+    <!-- Todo visible, menos las marcas, las manecillas y el eje: esos son los
+         huecos de la esfera, que en el icono original van en color oscuro. -->
+    <mask id="huecos">
+      <rect x="0" y="0" width="1024" height="1024" fill="#FFFFFF"/>
+
+      <!-- Marcas de las 12, 3, 6 y 9 -->
+      <g fill="#000000">
+        <rect x="498" y="230" width="28" height="62" rx="14"/>
+        <rect x="498" y="732" width="28" height="62" rx="14"/>
+        <rect x="230" y="498" width="62" height="28" rx="14"/>
+        <rect x="732" y="498" width="62" height="28" rx="14"/>
+      </g>
+
+      <!-- Manecillas: apuntan a las 12 y a las 3 -->
+      <g stroke="#000000" stroke-width="58" stroke-linecap="round" fill="none">
+        <line x1="512" y1="512" x2="686" y2="512"/>
+        <line x1="512" y1="512" x2="512" y2="326"/>
+      </g>
+
+      <!-- Eje central -->
+      <circle cx="512" cy="512" r="44" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <!-- Cuadrado redondeado de fondo, tenue como el índigo del original -->
+  <rect
+    x="0"
+    y="0"
+    width="1024"
+    height="1024"
+    rx="228"
+    ry="228"
+    fill="#FFFFFF"
+    fill-opacity="0.45"
+  />
+
+  <!-- Esfera del reloj, con las manecillas y las marcas recortadas -->
+  <circle cx="512" cy="512" r="332" fill="#FFFFFF" mask="url(#huecos)"/>
+
+  <!-- Punto blanco del eje, como en el original -->
+  <circle cx="512" cy="512" r="18" fill="#FFFFFF"/>
+</svg>

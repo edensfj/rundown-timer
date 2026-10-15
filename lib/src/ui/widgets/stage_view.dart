@@ -88,8 +88,22 @@ class _StageViewState extends ConsumerState<StageView>
       return _StageClock(use24Hour: snapshot.clockUse24Hour);
     }
 
-    // Sin actividades y sin mensaje no hay nada que proyectar.
-    if (!hasTimer && marquee == null) return const _NoActivities();
+    // Una actividad detenida a mano **no se anuncia**. El escenario es lo que ve la
+    // sala, y a nadie le sirve leer «DETENIDO» en el proyector: se apaga y el
+    // operador ya ve el aviso en el panel. Si hay una marquesina al aire, esa sí
+    // se sigue viendo.
+    if (snapshot.isStopped && marquee == null) {
+      return const _StandbyScreen();
+    }
+
+    // Sin actividades y sin mensaje no hay nada que proyectar. En espera no se avisa
+    // de nada: la pantalla está encendida y a propósito vacía, y un «no hay nada
+    // que presentar» en medio de una sala sería un mensaje falso.
+    if (!hasTimer && marquee == null) {
+      return snapshot.phase == CountdownPhase.idle
+          ? const _StandbyScreen()
+          : const _NoActivities();
+    }
 
     final flash = _flash.update(snapshot, DateTime.now());
     _syncFlash(flash);
@@ -173,8 +187,11 @@ class _StageContent extends StatelessWidget {
       return _StageClockBody(use24Hour: snapshot.clockUse24Hour);
     }
 
-    // Sin actividades pero con mensaje: sobre la banda solo queda el negro.
-    if (!snapshot.hasActivities) return const SizedBox.shrink();
+    // Sin actividades pero con mensaje: sobre la banda solo queda el negro. Con la
+    // actividad detenida, igual: la banda se ve y el reloj no.
+    if (!snapshot.hasActivities || snapshot.isStopped) {
+      return const SizedBox.shrink();
+    }
 
     // `stretch`: sin esto el `Column` se encoge al ancho de su contenido y, como
     // el padre solo lo alinea a la izquierda, todo el reloj queda descentrado
@@ -229,8 +246,10 @@ class _WithMarquee extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Solo texto: la banda se lleva la pantalla entera y no hay reloj.
-            if (showTimer) ...[
+            // Solo texto: la banda se lleva la pantalla entera y no hay reloj. Con la
+            // actividad detenida, el reloj tampoco sale: la sala ve la banda y
+            // nada más.
+            if (showTimer && !snapshot.isStopped) ...[
               Expanded(
                 child: _StageContent(
                   snapshot: snapshot,
@@ -407,6 +426,73 @@ class _InlineMeta extends StatelessWidget {
         const SizedBox(width: 5),
         Text(text, style: const TextStyle(color: muted, fontSize: 15)),
       ],
+    );
+  }
+}
+
+/// La pantalla en espera: negro con el icono de la app como marca de agua.
+///
+/// Negro a secas, un televisor parece apagado —y en directo, apagar el proyector
+/// sin querer es un susto que no hace falta—. Con el icono puesto al fondo, a
+/// muy poca opacidad, se ve que la pantalla está encendida y esperando.
+///
+/// El icono va **monocromo**, no el de color: sobre el negro el índigo no
+/// contrasta, y el monocromo conserva el parecido porque mantiene la relación de
+/// brillo del original (cuadrado tenue, esfera clara, manecillas recortadas). Ver
+/// assets/icon/rundown-mark.svg.
+///
+/// Late despacio, entre el 8 % y el 16 % de opacidad, por dos razones: se ve
+/// clarísimo de que está viva sin robarle protagonismo al resto, y una pantalla
+/// que pasa horas en negro puro acaba quemando el panel.
+class _StandbyScreen extends StatefulWidget {
+  const _StandbyScreen();
+
+  @override
+  State<_StandbyScreen> createState() => _StandbyScreenState();
+}
+
+class _StandbyScreenState extends State<_StandbyScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 6),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: StageColors.black,
+      child: Center(
+        child: LayoutBuilder(
+          builder: (context, constraints) => AnimatedBuilder(
+            animation: _pulse,
+            builder: (context, _) {
+              final lado = (constraints.maxHeight * 0.24).clamp(28.0, 360.0);
+              return Opacity(
+                opacity: 0.08 + _pulse.value * 0.08,
+                child: Image.asset(
+                  'assets/icon/rundown-mark.png',
+                  width: lado,
+                  height: lado,
+                  filterQuality: FilterQuality.medium,
+                ),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 }

@@ -140,9 +140,7 @@ class _DisplayTile extends ConsumerWidget {
             .read(selectedDisplayProvider.notifier)
             .select(selected ? null : displayKeyOf(display)),
         leading: Icon(
-          selected
-              ? Icons.check_circle_rounded
-              : Icons.desktop_windows_rounded,
+          selected ? Icons.check_circle_rounded : Icons.desktop_windows_rounded,
           color: selected ? scheme.primary : scheme.onSurfaceVariant,
         ),
         title: Text(
@@ -160,8 +158,9 @@ class _DisplayTile extends ConsumerWidget {
               'pos (${display.visiblePosition!.dx.toInt()}, '
                   '${display.visiblePosition!.dy.toInt()})',
           ].join('  ·  '),
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: scheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
         ),
         trailing: selected
             ? Text(

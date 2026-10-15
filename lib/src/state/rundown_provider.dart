@@ -5,6 +5,7 @@ import '../core/time_formatters.dart';
 import '../data/rundown_repository.dart';
 import '../models/activity_item.dart';
 import '../models/event_day.dart';
+import 'on_air_provider.dart';
 import 'selected_day_provider.dart';
 
 /// Fuente de verdad del itinerario: la lista completa de días del evento.
@@ -82,8 +83,8 @@ class RundownNotifier extends AsyncNotifier<List<EventDay>> {
   ///
   /// El instante queda guardado ([EventDay.forceRunAt]) para que el programa siga
   /// avanzando mientras se mira, en vez de quedarse clavado en la primera
-  /// actividad. El día también queda seleccionado: si no, el operador arrancaría
-  /// un día y seguiría viendo correr el otro.
+  /// actividad. El día también queda seleccionado y **toma el aire**: mientras
+  /// esté corriendo, ir mirando otro día en la lista no mueve el escenario.
   Future<void> startDayRun(String dayId, {DateTime? at}) async {
     await _commit(
       _days
@@ -95,6 +96,7 @@ class RundownNotifier extends AsyncNotifier<List<EventDay>> {
           .toList(),
     );
     ref.read(selectedDayProvider.notifier).select(dayId);
+    ref.read(onAirDayIdProvider.notifier).take(dayId);
   }
 
   /// Devuelve el día a su fecha de calendario y deja de estar en marcha.
@@ -104,6 +106,7 @@ class RundownNotifier extends AsyncNotifier<List<EventDay>> {
           .map((d) => d.id == dayId ? d.copyWith(clearForceRun: true) : d)
           .toList(),
     );
+    ref.read(onAirDayIdProvider.notifier).releaseDay(dayId);
   }
 
   Future<void> deleteDay(String dayId) async {
@@ -113,6 +116,7 @@ class RundownNotifier extends AsyncNotifier<List<EventDay>> {
           .read(selectedDayProvider.notifier)
           .select(remaining.isEmpty ? null : remaining.first.id);
     }
+    ref.read(onAirDayIdProvider.notifier).releaseDay(dayId);
     await _commit(remaining);
   }
 

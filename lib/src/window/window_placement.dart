@@ -8,7 +8,11 @@ import 'package:window_manager/window_manager.dart';
 /// el fullscreen al monitor que *contiene* la ventana, así que hay que moverla
 /// primero y activarlo después. Al revés, el escenario se quedaba en la
 /// pantalla equivocada.
-Future<void> placeWindow(Rect frame, {required bool fullscreen, bool force = false}) async {
+Future<void> placeWindow(
+  Rect frame, {
+  required bool fullscreen,
+  bool force = false,
+}) async {
   // El orden importa y no es cosmético: en Windows `window_manager` aplica
   // el fullscreen al monitor que *contiene* la ventana, así que hay que moverla
   // primero y activarlo después. Al revés, el escenario se quedaba en la

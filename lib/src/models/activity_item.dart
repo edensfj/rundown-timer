@@ -67,24 +67,24 @@ class ActivityItem {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'startTime': startTime.toIso8601String(),
-        'endTime': endTime?.toIso8601String(),
-        'description': description,
-        'responsible': responsible,
-        'location': location,
-      };
+    'id': id,
+    'title': title,
+    'startTime': startTime.toIso8601String(),
+    'endTime': endTime?.toIso8601String(),
+    'description': description,
+    'responsible': responsible,
+    'location': location,
+  };
 
   factory ActivityItem.fromJson(Map<dynamic, dynamic> json) => ActivityItem(
-        id: json['id'] as String,
-        title: (json['title'] as String?) ?? '',
-        startTime: DateTime.parse(json['startTime'] as String),
-        endTime: _asDate(json['endTime']),
-        description: _asString(json['description']),
-        responsible: _asString(json['responsible']),
-        location: _asString(json['location']),
-      );
+    id: json['id'] as String,
+    title: (json['title'] as String?) ?? '',
+    startTime: DateTime.parse(json['startTime'] as String),
+    endTime: _asDate(json['endTime']),
+    description: _asString(json['description']),
+    responsible: _asString(json['responsible']),
+    location: _asString(json['location']),
+  );
 
   static DateTime? _asDate(Object? value) {
     if (value == null) return null;
@@ -111,12 +111,12 @@ class ActivityItem {
 
   @override
   int get hashCode => Object.hash(
-        id,
-        title,
-        startTime,
-        endTime,
-        description,
-        responsible,
-        location,
-      );
+    id,
+    title,
+    startTime,
+    endTime,
+    description,
+    responsible,
+    location,
+  );
 }

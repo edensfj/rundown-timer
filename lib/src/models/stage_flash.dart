@@ -8,26 +8,22 @@ import '../models/countdown_snapshot.dart';
 /// Tres avisos, por orden de prioridad:
 ///
 /// 1. **Rojo** cuando se pasa del tiempo programado (lo de siempre).
-/// 2. **Naranja** en los últimos segundos de la actividad, para anticipar el
-///    final.
+/// 2. **Naranja** en los últimos minutos o segundos de la actividad, para
+///    anticipar el final.
 /// 3. **Verde** unos instantes al empezar una actividad nueva, para cantar el
 ///    cambio.
+///
+/// Cuánto dura cada destello y cuál está encendido lo dice
+/// [CountdownSnapshot.flashSettings], que el operador ajusta en el diálogo de
+/// parpadeos. El rojo es el único sin interruptor propio: con los parpadeos
+/// encendidos, siempre avisa al acabarse el tiempo.
 ///
 /// La detección del cambio necesita memoria —hay que comparar con la actividad
 /// anterior—, y por eso vive en un objeto con estado y no en el provider
 /// derivado, que es puro. Es lógica sin widgets a propósito, para poder probarla
 /// sin levantar la pantalla entera.
 class StageFlashTracker {
-  StageFlashTracker({
-    this.changeDuration = const Duration(seconds: 3),
-    this.endingWindow = const Duration(seconds: 5),
-  });
-
-  /// Cuánto dura el destello verde tras un cambio de actividad.
-  final Duration changeDuration;
-
-  /// Con este tiempo o menos por delante, empieza el destello naranja.
-  final Duration endingWindow;
+  StageFlashTracker();
 
   String? _lastActivityId;
   CountdownPhase? _lastPhase;
@@ -35,7 +31,13 @@ class StageFlashTracker {
 
   /// El color del destello para [snapshot] en el instante [now], o `null` si la
   /// pantalla debe quedarse en negro.
+  ///
+  /// Los ajustes se leen de la propia instantánea ([CountdownSnapshot
+  /// .flashSettings]): así el escenario —que corre en otro proceso— los obedece
+  /// sin más, sin un canal aparte.
   Color? update(CountdownSnapshot snapshot, DateTime now) {
+    final settings = snapshot.flashSettings;
+
     // En modo reloj no hay nada que avisar, y sin actividades tampoco.
     if (snapshot.showClock || !snapshot.hasActivities) {
       _lastActivityId = null;
@@ -59,20 +61,30 @@ class StageFlashTracker {
     _lastActivityId = id;
     _lastPhase = phase;
 
+    // Interruptor maestro: apagado, la pantalla no parpadea por nada. La memoria
+    // del cambio se sigue actualizando arriba para que, al volver a encenderlo,
+    // no salte un verde de un cambio que ya pasó.
+    if (!settings.enabled) return null;
+
+    // Rojo del tiempo excedido: sin interruptor, es el aviso que no puede
+    // faltar mientras los parpadeos estén encendidos.
     if (phase == CountdownPhase.overtime) return StageColors.alert;
     if (phase == CountdownPhase.finished || phase == CountdownPhase.preShow) {
       return null;
     }
 
-    // Últimos segundos: naranja. Manda sobre el verde de un cambio reciente
+    // Últimos instantes: naranja. Manda sobre el verde de un cambio reciente
     // (por ejemplo, una actividad muy corta).
-    if (snapshot.remaining > Duration.zero &&
-        snapshot.remaining <= endingWindow) {
+    if (settings.endingEnabled &&
+        snapshot.remaining > Duration.zero &&
+        snapshot.remaining <= settings.endingWindow) {
       return StageColors.ending;
     }
 
     final changedAt = _changedAt;
-    if (changedAt != null && now.difference(changedAt) < changeDuration) {
+    if (settings.changeEnabled &&
+        changedAt != null &&
+        now.difference(changedAt) < settings.changeDuration) {
       return StageColors.change;
     }
     return null;

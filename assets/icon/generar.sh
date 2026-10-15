@@ -5,6 +5,8 @@
 #   assets/icon/rundown-icon.svg   ← única fuente de verdad (se edita a mano)
 #   assets/icon/rundown-icon.png   ← render a 1024, para previsualizar/otros usos
 #   assets/icon/rundown-icon.ico   ← multirresolución, lo usa el instalador
+#   assets/icon/rundown-mark.svg   ← marca de agua monocroma (se edita a mano)
+#   assets/icon/rundown-mark.png   ← render a 1024, lo usa el escenario en espera
 #   windows/runner/resources/app_icon.ico  ← copia que consume Runner.rc
 #
 # Uso:  bash assets/icon/generar.sh
@@ -21,6 +23,10 @@ PNG="$DIR/rundown-icon.png"
 ICO="$DIR/rundown-icon.ico"
 ICO_WINDOWS="$RAIZ/windows/runner/resources/app_icon.ico"
 
+# Marca de agua del escenario en espera: el mismo icono, monocromo.
+MARK_SVG="$DIR/rundown-mark.svg"
+MARK_PNG="$DIR/rundown-mark.png"
+
 # Tamaños que Windows usa de verdad: 16 (barra de tareas), 24/32 (explorador),
 # 48 (escritorio), 256 (vista grande). Se incluyen todos para que el sistema no
 # tenga que reescalar y el icono se vea nítido en cada contexto.
@@ -34,6 +40,9 @@ magick "$PNG" -define icon:auto-resize="$TAMANOS" "$ICO"
 
 echo "→ Copiando a windows/runner/resources/app_icon.ico"
 cp "$ICO" "$ICO_WINDOWS"
+
+echo "→ Renderizando la marca de agua monocroma a 1024 px"
+rsvg-convert -w 1024 -h 1024 "$MARK_SVG" -o "$MARK_PNG"
 
 echo
 magick identify "$ICO" | sed 's/^/  /'

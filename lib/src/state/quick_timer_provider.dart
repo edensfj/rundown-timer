@@ -33,8 +33,8 @@ class QuickTimerNotifier extends Notifier<QuickTimerConfig?> {
 
 final quickTimerProvider =
     NotifierProvider<QuickTimerNotifier, QuickTimerConfig?>(
-  QuickTimerNotifier.new,
-);
+      QuickTimerNotifier.new,
+    );
 
 /// Rango razonable para un contador rápido: de 1 segundo a 24 horas.
 const Duration kQuickTimerMin = Duration(seconds: 1);

@@ -7,11 +7,13 @@ import '../../state/clock_provider.dart';
 /// Cabecera del dashboard con la fecha y la hora actual en vivo.
 ///
 /// Se actualiza segundo a segundo a través de [clockProvider].
+///
+/// Solo hora y fecha: el nombre del día no se pone aquí porque justo debajo
+/// están las fichas de los días, con el que está en marcha highlighted —decirlo
+/// dos veces era ruido, y además podía contradecirse: aquí arriba salía el día
+/// que se estaba viendo y el ⏸ marcaba el que estaba en el aire.
 class LiveClockHeader extends ConsumerWidget {
-  const LiveClockHeader({super.key, required this.contextLabel});
-
-  /// Texto secundario, por ejemplo el nombre del evento.
-  final String? contextLabel;
+  const LiveClockHeader({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -35,17 +37,6 @@ class LiveClockHeader extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (contextLabel != null) ...[
-            Text(
-              contextLabel!.toUpperCase(),
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: scheme.onPrimary.withValues(alpha: 0.85),
-                letterSpacing: 1.4,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
-          ],
           Text(
             TimeFormatters.timeWithSeconds(now),
             style: theme.textTheme.displaySmall?.copyWith(

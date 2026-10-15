@@ -56,8 +56,8 @@ class SelectedDisplayNotifier extends Notifier<String?> {
 
 final selectedDisplayProvider =
     NotifierProvider<SelectedDisplayNotifier, String?>(
-  SelectedDisplayNotifier.new,
-);
+      SelectedDisplayNotifier.new,
+    );
 
 /// Con qué se distingue una pantalla de otra.
 ///

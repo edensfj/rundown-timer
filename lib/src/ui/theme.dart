@@ -44,9 +44,7 @@ ThemeData buildAppTheme() {
         // cualquier botón que no viva dentro de un `Expanded` (por ejemplo,
         // uno suelto en un `Row`).
         minimumSize: const Size(64, 52),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     floatingActionButtonTheme: FloatingActionButtonThemeData(
@@ -54,9 +52,7 @@ ThemeData buildAppTheme() {
       foregroundColor: scheme.onPrimary,
     ),
     chipTheme: ChipThemeData(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ),
     dividerTheme: DividerThemeData(
       color: scheme.outlineVariant,

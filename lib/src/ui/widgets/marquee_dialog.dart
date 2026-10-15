@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/marquee.dart';
@@ -8,9 +9,9 @@ import 'marquee_band.dart';
 /// El diálogo de la marquesina: el chat de mensajes y sus ajustes.
 ///
 /// Desde aquí se escribe un texto, se marca si va en bucle y se manda a la
-/// pantalla. Abajo quedan los mensajes ya enviados, para reenviarlos o
-/// eliminarlos, y un botón para **cortar** el que esté al aire, que devuelve el
-/// reloj a su tamaño.
+/// pantalla. Abajo quedan los mensajes ya enviados, para copiarlos, editarlos
+/// —el texto o el bucle—, reenviarlos o eliminarlos, y un botón para **cortar**
+/// el que esté al aire, que devuelve el reloj a su tamaño.
 class MarqueeDialog extends ConsumerStatefulWidget {
   const MarqueeDialog({super.key});
 
@@ -430,17 +431,64 @@ class _SliderRow extends StatelessWidget {
   }
 }
 
+/// Lo que devuelve el diálogo de edición: el texto nuevo y si se repite o no.
+typedef _EditedMessage = ({String text, bool loop});
+
 /// Una fila del chat: el texto y lo que se puede hacer con él.
-class _MessageTile extends ConsumerWidget {
+///
+/// Los botones van de menos a más destructivo: copiar, editar, reenviar y, al
+/// final, borrar. Copiar confirma en el propio botón —el icono se vuelve un
+/// visto— porque un SnackBar quedaría detrás de este diálogo.
+class _MessageTile extends ConsumerStatefulWidget {
   const _MessageTile({required this.message, required this.isActive});
 
   final MarqueeMessage message;
   final bool isActive;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_MessageTile> createState() => _MessageTileState();
+}
+
+class _MessageTileState extends ConsumerState<_MessageTile> {
+  /// Se enciende un momento al copiar, para que el botón lo confirme.
+  bool _copiado = false;
+
+  Future<void> _copiar() async {
+    await Clipboard.setData(ClipboardData(text: widget.message.text));
+    if (!mounted) return;
+    setState(() => _copiado = true);
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (mounted) setState(() => _copiado = false);
+  }
+
+  Future<void> _editar() async {
+    final edited = await showDialog<_EditedMessage>(
+      context: context,
+      builder: (_) => _EditMessageDialog(message: widget.message),
+    );
+    if (edited == null || !mounted) return;
+
+    await ref
+        .read(marqueeMessagesProvider.notifier)
+        .update(widget.message.id, text: edited.text, loop: edited.loop);
+    if (!mounted) return;
+
+    // Si el mensaje editado está al aire, la pantalla lo refleja ya.
+    if (ref.read(marqueePlaybackProvider)?.messageId == widget.message.id) {
+      ref
+          .read(marqueePlaybackProvider.notifier)
+          .refresh(
+            widget.message.copyWith(text: edited.text, loop: edited.loop),
+          );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final message = widget.message;
+    final isActive = widget.isActive;
 
     return Container(
       margin: const EdgeInsets.only(top: 6),
@@ -459,10 +507,13 @@ class _MessageTile extends ConsumerWidget {
           if (message.loop)
             Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: Icon(
-                Icons.repeat_rounded,
-                size: 16,
-                color: scheme.primary,
+              child: Tooltip(
+                message: 'Se repite en bucle',
+                child: Icon(
+                  Icons.repeat_rounded,
+                  size: 16,
+                  color: scheme.primary,
+                ),
               ),
             ),
           Expanded(
@@ -472,6 +523,20 @@ class _MessageTile extends ConsumerWidget {
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium,
             ),
+          ),
+          IconButton(
+            onPressed: _copiar,
+            tooltip: _copiado ? 'Copiado' : 'Copiar texto',
+            color: _copiado ? scheme.primary : null,
+            icon: Icon(
+              _copiado ? Icons.check_rounded : Icons.copy_rounded,
+              size: 20,
+            ),
+          ),
+          IconButton(
+            onPressed: _editar,
+            tooltip: 'Editar mensaje',
+            icon: const Icon(Icons.edit_outlined, size: 20),
           ),
           if (isActive)
             IconButton(
@@ -497,6 +562,92 @@ class _MessageTile extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Editar un mensaje ya enviado: el texto y si se repite o no.
+///
+/// Es el formulario de arriba en pequeño y con lo que ya hay puesto. El caso
+/// típico es cambiar el bucle —un texto que se repetía y ya no debe, o al
+/// revés— sin tener que volver a escribirlo entero.
+class _EditMessageDialog extends StatefulWidget {
+  const _EditMessageDialog({required this.message});
+
+  final MarqueeMessage message;
+
+  @override
+  State<_EditMessageDialog> createState() => _EditMessageDialogState();
+}
+
+class _EditMessageDialogState extends State<_EditMessageDialog> {
+  late final TextEditingController _controller;
+  late bool _loop;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.message.text);
+    _loop = widget.message.loop;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _guardar() {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    Navigator.of(context).pop((text: text, loop: _loop));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Editar mensaje'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              minLines: 1,
+              maxLines: 3,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _guardar(),
+              decoration: const InputDecoration(
+                labelText: 'Mensaje',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              value: _loop,
+              onChanged: (v) => setState(() => _loop = v),
+              title: const Text('Repetir en bucle'),
+              subtitle: Text(
+                _loop
+                    ? 'El texto se repite hasta que lo pares.'
+                    : 'El texto cruza una sola vez.',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(onPressed: _guardar, child: const Text('Guardar')),
+      ],
     );
   }
 }

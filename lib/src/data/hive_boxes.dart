@@ -14,6 +14,14 @@ const String selectedDayKey = 'selectedDayId';
 const String selectedDisplayKey = 'selectedDisplayKey';
 const String marqueeSettingsKey = 'marqueeSettings';
 const String marqueeMessagesKey = 'marqueeMessages';
+const String flashSettingsKey = 'flashSettings';
+
+/// Si el escenario proyecta la cuenta atrás **antes** de que empiece el evento.
+///
+/// Apagado por defecto: mientras no haya nada en marcha la pantalla se queda en
+/// negro, que es lo que se quiere en una sala esperando. Encendido, es lo de
+/// siempre: la cuenta regresiva al primer bloque del guion.
+const String showPreShowCountdownKey = 'showPreShowCountdown';
 
 /// Prepara Hive antes de correr la app.
 ///

@@ -16,5 +16,6 @@ class SelectedDayNotifier extends Notifier<String?> {
   }
 }
 
-final selectedDayProvider =
-    NotifierProvider<SelectedDayNotifier, String?>(SelectedDayNotifier.new);
+final selectedDayProvider = NotifierProvider<SelectedDayNotifier, String?>(
+  SelectedDayNotifier.new,
+);

@@ -49,15 +49,18 @@ class TemplatesDialog extends ConsumerWidget {
             Text(
               'Un programa reutilizable, guardado por duraciones. Al aplicarlo a '
               'un día eliges la hora de comienzo y el resto se calcula solo.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 16),
 
             if (cargando)
               const Expanded(child: Center(child: CircularProgressIndicator()))
             else if (plantillas.isEmpty)
-              Expanded(child: _SinPlantillas(onCrear: () => _crear(context, ref)))
+              Expanded(
+                child: _SinPlantillas(onCrear: () => _crear(context, ref)),
+              )
             else
               Expanded(
                 child: ListView.separated(
@@ -108,7 +111,9 @@ class TemplatesDialog extends ConsumerWidget {
     final plantilla = await TemplateEditorDialog.show(context);
     if (plantilla == null) return;
     await ref.read(templatesProvider.notifier).save(plantilla);
-    if (context.mounted) _aviso(context, 'Plantilla «${plantilla.name}» guardada');
+    if (context.mounted) {
+      _aviso(context, 'Plantilla «${plantilla.name}» guardada');
+    }
   }
 
   Future<void> _editar(
@@ -116,7 +121,10 @@ class TemplatesDialog extends ConsumerWidget {
     WidgetRef ref,
     RundownTemplate plantilla,
   ) async {
-    final editada = await TemplateEditorDialog.show(context, existing: plantilla);
+    final editada = await TemplateEditorDialog.show(
+      context,
+      existing: plantilla,
+    );
     if (editada == null) return;
     await ref.read(templatesProvider.notifier).save(editada);
     if (context.mounted) _aviso(context, 'Plantilla actualizada');
@@ -161,7 +169,8 @@ class TemplatesDialog extends ConsumerWidget {
       context,
       inicial: day.name,
       titulo: 'Guardar el día como plantilla',
-      ayuda: 'Se guardarán las ${day.activities.length} actividades de «${day.name}» '
+      ayuda:
+          'Se guardarán las ${day.activities.length} actividades de «${day.name}» '
           'con sus duraciones actuales.',
     );
     if (nombre == null || nombre.trim().isEmpty) return;
@@ -170,7 +179,10 @@ class TemplatesDialog extends ConsumerWidget {
         .read(templatesProvider.notifier)
         .saveFromDay(day, id: newId(), name: nombre.trim());
     if (context.mounted) {
-      _aviso(context, 'Plantilla «${creada.name}» creada con ${creada.activities.length} actividades');
+      _aviso(
+        context,
+        'Plantilla «${creada.name}» creada con ${creada.activities.length} actividades',
+      );
     }
   }
 
@@ -192,7 +204,9 @@ class TemplatesDialog extends ConsumerWidget {
     );
 
     final messenger = ScaffoldMessenger.of(context);
-    await ref.read(rundownProvider.notifier).addActivities(destino.id, actividades);
+    await ref
+        .read(rundownProvider.notifier)
+        .addActivities(destino.id, actividades);
     if (context.mounted) Navigator.of(context).pop();
 
     messenger.showSnackBar(
@@ -234,8 +248,9 @@ class _SinPlantillas extends StatelessWidget {
               'Crea una con el ritmo de tu programa habitual y reutilízala cada '
               'vez que armes un día nuevo.',
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
             ),
           ),
           const SizedBox(height: 18),
@@ -295,16 +310,18 @@ class _TarjetaPlantilla extends StatelessWidget {
                       child: Text(
                         plantilla.name,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Text(
                       '${plantilla.activities.length} act. · '
                       '${TimeFormatters.humanDuration(plantilla.totalDuration)}',
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: scheme.primary),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.primary,
+                      ),
                     ),
                   ],
                 ),
@@ -314,8 +331,9 @@ class _TarjetaPlantilla extends StatelessWidget {
                     resto > 0 ? '$resumen  ·  +$resto más' : resumen,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: scheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ],
@@ -388,9 +406,8 @@ Future<DateTime?> _pedirHoraInicio(BuildContext context, EventDay day) async {
                   ),
                   child: Text(
                     TimeFormatters.time(elegida),
-                    style: Theme.of(ctx).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                    style: Theme.of(ctx).textTheme.headlineSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
                   ),
                 ),
               ),

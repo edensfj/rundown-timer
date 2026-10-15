@@ -21,6 +21,10 @@ class DaySelector extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final days = ref.watch(sortedDaysProvider);
     final activeDay = ref.watch(activeDayIdProvider);
+    // Qué día está mandando en el escenario. Puede no ser el que se está
+    // viendo: el operador puede estar revisando el guion de mañana con el
+    // directo de hoy en la pantalla.
+    final onAir = ref.watch(stageDayIdProvider);
 
     return SizedBox(
       height: 74,
@@ -37,6 +41,7 @@ class DaySelector extends ConsumerWidget {
           return _DayChip(
             day: day,
             selected: day.id == activeDay,
+            running: day.id == onAir,
             onTap: () => ref.read(selectedDayProvider.notifier).select(day.id),
             // Con el dedo no hay clic derecho: la pulsación larga abre lo mismo.
             onLongPress: () => _dayMenu(context, ref, day),
@@ -247,6 +252,7 @@ class _DayChip extends StatelessWidget {
   const _DayChip({
     required this.day,
     required this.selected,
+    required this.running,
     required this.onTap,
     required this.onLongPress,
     required this.onSecondaryTap,
@@ -254,6 +260,10 @@ class _DayChip extends StatelessWidget {
 
   final EventDay day;
   final bool selected;
+
+  /// `true` si este día es el que se está proyectando ahora mismo.
+  final bool running;
+
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -307,11 +317,12 @@ class _DayChip extends StatelessWidget {
                 const SizedBox(height: 2),
                 Row(
                   children: [
-                    // Marca de «ejecutando hoy»: el día corre aunque su fecha no
-                    // sea la de hoy, y tiene que verse de un vistazo.
-                    if (day.forceRun) ...[
+                    // Marca de «esto está corriendo»: el día está en el aire,
+                    // esté en marcha hoy o lo esté porque el operador lo puso en
+                    // el escenario. Se ve de un vistazo qué programa manda.
+                    if (running) ...[
                       Icon(
-                        Icons.play_circle_fill_rounded,
+                        Icons.pause_circle_filled,
                         size: 13,
                         color: foreground,
                       ),

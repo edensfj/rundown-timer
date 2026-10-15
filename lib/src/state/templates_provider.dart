@@ -40,8 +40,8 @@ class TemplatesNotifier extends AsyncNotifier<List<RundownTemplate>> {
 
 final templatesProvider =
     AsyncNotifierProvider<TemplatesNotifier, List<RundownTemplate>>(
-  TemplatesNotifier.new,
-);
+      TemplatesNotifier.new,
+    );
 
 /// Plantillas ordenadas por nombre, o lista vacía mientras carga.
 final sortedTemplatesProvider = Provider<List<RundownTemplate>>((ref) {

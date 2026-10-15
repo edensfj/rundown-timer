@@ -57,6 +57,18 @@ class MarqueeMessagesNotifier extends Notifier<List<MarqueeMessage>> {
   Future<void> remove(String id) =>
       _commit(state.where((m) => m.id != id).toList());
 
+  /// Cambia el texto o el bucle de un mensaje ya enviado.
+  ///
+  /// El caso típico es un texto que se repetía en bucle y ya no debe repetirse
+  /// —o al revés—: se edita ahí mismo en vez de volver a escribirlo entero.
+  Future<void> update(String id, {required String text, required bool loop}) =>
+      _commit([
+        for (final message in state)
+          message.id == id
+              ? message.copyWith(text: text.trim(), loop: loop)
+              : message,
+      ]);
+
   Future<void> _commit(List<MarqueeMessage> messages) async {
     state = messages;
     await ref.read(repositoryProvider).saveMarqueeMessages(messages);
@@ -115,6 +127,48 @@ class MarqueePlaybackNotifier extends Notifier<MarqueeOverlay?> {
   void play(MarqueeMessage message) {
     final settings = ref.read(marqueeSettingsProvider);
     _start(message, settings);
+  }
+
+  /// Pone al día el pase al aire cuando su mensaje se edita en el chat.
+  ///
+  /// Cambiar **solo el bucle** no reinicia el texto: se quita o se reprograma su
+  /// final sobre el recorrido que le queda, igual que al mover un deslizador.
+  /// Cambiar el texto sí es un pase nuevo —lo que cruza la pantalla ya no es lo
+  /// mismo— y vuelve a empezar desde el principio.
+  void refresh(MarqueeMessage message) {
+    final overlay = state;
+    if (overlay == null || overlay.messageId != message.id) return;
+    if (overlay.text == message.text && overlay.loop == message.loop) return;
+
+    if (overlay.text != message.text) {
+      play(message);
+      return;
+    }
+
+    state = overlay.copyWith(loop: message.loop);
+
+    _timer?.cancel();
+    _timer = null;
+
+    // En bucle no hay final que programar: sigue hasta que lo paren.
+    if (message.loop) return;
+
+    final total = overlay.duration.inMicroseconds;
+    final elapsed = _startedAt == null
+        ? 0
+        : DateTime.now().difference(_startedAt!).inMicroseconds;
+    final pending = total <= 0 ? 0.0 : (1 - elapsed / total).clamp(0.0, 1.0);
+
+    _timer = Timer(
+      Duration(
+        milliseconds: (overlay.duration.inMilliseconds * pending).round(),
+      ),
+      () {
+        if (!ref.mounted) return;
+        state = null;
+        _startedAt = null;
+      },
+    );
   }
 
   void _start(MarqueeMessage message, MarqueeSettings settings) {

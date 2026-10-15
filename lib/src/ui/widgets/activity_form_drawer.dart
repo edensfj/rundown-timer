@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/app_config.dart';
 import '../../core/ids.dart';
+import '../../core/duration_input.dart';
 import '../../core/time_formatters.dart';
 import '../../models/activity_item.dart';
 import '../../models/event_day.dart';
@@ -81,6 +82,9 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
   late final TextEditingController _responsibleController;
   late final TextEditingController _locationController;
 
+  /// Duración escrita a mano («30m», «1h30», «30s»). Vacío = se deduce.
+  late final TextEditingController _durationController;
+
   late DateTime _startTime;
 
   /// Hora de fin explícita. `null` = se deduce de la siguiente actividad.
@@ -96,16 +100,23 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
     super.initState();
 
     final day = widget.day;
-    // Con el día marcado para ejecutarse hoy, la lista de la que viene la
-    // actividad ya lleva las fechas de hoy. Aquí se vuelve a la fecha real del
-    // día, que es la que se guarda al pulsar «Guardar».
-    final existing = widget.existing == null
-        ? null
-        : day.storedActivity(widget.existing!);
+    // La lista del panel siempre trae las horas del programa —el desfase es solo
+    // del escenario—, así que lo que llega aquí se puede editar y guardar tal
+    // cual.
+    final existing = widget.existing;
 
     _startTime =
         existing?.startTime ?? TimeFormatters.defaultStartForDay(day.date);
     _endTime = existing?.endTime;
+
+    // Una actividad con fin fijado a mano se lee de vuelta como duración: es lo
+    // mismo dicho de otra forma, y es lo que el operador escribió.
+    final explicitEnd = _endTime;
+    _durationController = TextEditingController(
+      text: explicitEnd != null && explicitEnd.isAfter(_startTime)
+          ? formatDurationInput(explicitEnd.difference(_startTime))
+          : '',
+    );
 
     _titleController = TextEditingController(text: existing?.title ?? '');
     _descriptionController = TextEditingController(
@@ -123,11 +134,36 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
     _descriptionController.dispose();
     _responsibleController.dispose();
     _locationController.dispose();
+    _durationController.dispose();
     super.dispose();
+  }
+
+  /// Aviso del campo de duración: solo cuando hay algo escrito que no se
+  /// entiende. Vacío significa «deduzca la duración», que siempre vale.
+  String? get _durationError {
+    final text = _durationController.text.trim();
+    if (text.isEmpty) return null;
+    return parseDuration(text) == null ? 'No entiendo esa duración' : null;
+  }
+
+  /// Rehace la hora de fin con lo que haya escrito en el campo de duración.
+  ///
+  /// Vacío = se deduce de la siguiente actividad, que es lo de siempre.
+  void _rebuildEnd() {
+    final text = _durationController.text.trim();
+    _endError = null;
+    if (text.isEmpty) {
+      _endTime = null;
+      return;
+    }
+
+    final duration = parseDuration(text);
+    _endTime = duration == null ? null : _startTime.add(duration);
   }
 
   void _save() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (_durationError != null) return;
 
     final end = _endTime;
     if (end != null && !end.isAfter(_startTime)) {
@@ -182,17 +218,31 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
     );
     if (picked == null || !mounted) return;
 
+    final value = TimeFormatters.at(
+      widget.day.date,
+      picked.hour,
+      picked.minute,
+    );
+
     setState(() {
-      final value = TimeFormatters.at(
-        widget.day.date,
-        picked.hour,
-        picked.minute,
-      );
-      if (isEnd) {
-        _endTime = value;
-        _endError = null;
-      } else {
+      if (!isEnd) {
+        // Mover el inicio no deshace la duración: si dura 30 minutos, sigue
+        // durando 30 aunque se cambie la hora de arranque.
         _startTime = value;
+        _rebuildEnd();
+        return;
+      }
+
+      _endTime = value;
+      if (value.isAfter(_startTime)) {
+        _endError = null;
+        // El reloj es la otra manera de escribir la duración: se refleja en el
+        // campo para que las dos vistas digan lo mismo.
+        _durationController.text = formatDurationInput(
+          value.difference(_startTime),
+        );
+      } else {
+        _endError = 'La hora de fin debe ser posterior al inicio';
       }
     });
   }
@@ -200,16 +250,14 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
   void _shiftBy(Duration delta) {
     setState(() {
       _startTime = _startTime.add(delta);
-      // Si hay fin explícito se desplaza con el inicio para no invalidarlo.
-      _endTime = _endTime?.add(delta);
-      _endError = null;
-    });
-  }
-
-  void _toggleExplicitEnd(bool enabled) {
-    setState(() {
-      _endTime = enabled ? _inferredEnd() : null;
-      _endError = null;
+      // Si hay duración escrita, el fin se rehace con ella; si no, el fin
+      // deducido se desplaza con el inicio para no invalidarlo.
+      if (_durationController.text.trim().isEmpty) {
+        _endTime = _endTime?.add(delta);
+        _endError = null;
+      } else {
+        _rebuildEnd();
+      }
     });
   }
 
@@ -333,14 +381,14 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
                   _startTime = TimeFormatters.defaultStartForDay(
                     widget.day.date,
                   );
-                  _endError = null;
+                  _rebuildEnd();
                 }),
               ),
             ],
           ),
 
           const SizedBox(height: 22),
-          _buildEndTimeSection(theme, scheme),
+          _buildDurationSection(theme, scheme),
 
           const SizedBox(height: 24),
           TextFormField(
@@ -391,88 +439,106 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
     );
   }
 
-  /// Sección de hora de fin: por defecto deducida, con opción de fijarla a mano.
-  Widget _buildEndTimeSection(ThemeData theme, ColorScheme scheme) {
+  /// Sección de duración: se escribe cuánto dura y la hora de fin sale de ahí.
+  ///
+  /// Se escribe como se habla («30m», «1h30», «1:30», «0.5m», «30s») o se deja
+  /// vacío, que es lo de siempre: la duración se deduce de cuándo empieza la
+  /// siguiente actividad.
+  Widget _buildDurationSection(ThemeData theme, ColorScheme scheme) {
     final explicit = _endTime != null;
-    final inferred = _inferredEnd();
+    final end = _endTime ?? _inferredEnd();
+    final deduced = _inferredEnd().difference(_startTime);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text('Hora de fin', style: theme.textTheme.titleSmall),
-            ),
-            Text(
-              explicit ? 'Fijada a mano' : 'Deducida',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: explicit ? scheme.primary : scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            Switch(value: explicit, onChanged: _toggleExplicitEnd),
-          ],
-        ),
-        const SizedBox(height: 4),
-        if (explicit)
-          InkWell(
-            onTap: () => _pickTime(isEnd: true),
-            borderRadius: BorderRadius.circular(12),
-            child: InputDecorator(
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.schedule_rounded),
-                errorText: _endError,
-              ),
-              child: Text(
-                TimeFormatters.time(_endTime!),
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          )
-        else
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: scheme.outlineVariant),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.auto_awesome,
-                  size: 18,
-                  color: scheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Termina a las ${TimeFormatters.time(inferred)} · se deduce '
-                    'de la siguiente actividad',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+        Text('Duración', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _durationController,
+          onChanged: (_) => setState(_rebuildEnd),
+          decoration: InputDecoration(
+            hintText: '30m · 1h30 · 1:30 · 30s',
+            prefixIcon: const Icon(Icons.timelapse_rounded),
+            errorText: _durationError ?? _endError,
+            helperText:
+                'Déjalo vacío para que la saques de la siguiente '
+                'actividad.',
+            suffixIcon: explicit
+                ? IconButton(
+                    onPressed: () => setState(() {
+                      _durationController.clear();
+                      _rebuildEnd();
+                    }),
+                    tooltip: 'Volver a la duración deducida',
+                    icon: const Icon(Icons.close_rounded),
+                  )
+                : null,
           ),
-        const SizedBox(height: 6),
-        Text(
-          explicit
-              ? 'El fin fijado a mano manda sobre la deducción automática.'
-              : 'Activa el interruptor solo si esta actividad tiene un cierre '
-                    'propio, como una fiesta de cierre o un refrigerio corto.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: scheme.onSurfaceVariant,
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                explicit ? Icons.event_available_outlined : Icons.auto_awesome,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Termina a las ${TimeFormatters.time(end)}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      explicit
+                          ? 'Duración fijada: ${_durationLabel(end.difference(_startTime))}.'
+                          : 'Deducida de la siguiente: ${_durationLabel(deduced)}.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () => _pickTime(isEnd: true),
+                child: const Text('Fijar hora'),
+              ),
+            ],
           ),
         ),
       ],
     );
+  }
+
+  /// Una duración escrita como se lee en voz alta: «1 h 30 min», «45 s».
+  static String _durationLabel(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    final hours = duration.inHours;
+    final resto = minutes % 60;
+
+    final parts = <String>[
+      if (hours > 0) '$hours h',
+      if (resto > 0) '$resto min',
+      if (seconds > 0) '$seconds s',
+    ];
+    return parts.isEmpty ? '0 s' : parts.join(' ');
   }
 
   Widget _buildFooter(ThemeData theme, ColorScheme scheme) {

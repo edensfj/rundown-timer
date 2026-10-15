@@ -8,7 +8,9 @@ import 'marquee_provider.dart';
 import 'quick_timer_provider.dart';
 import 'run_show_provider.dart';
 import 'schedule_provider.dart';
+import 'stage_flash_settings_provider.dart';
 import 'stage_mode_provider.dart';
+import 'stage_projection_provider.dart';
 
 /// Provider derivado que combina reloj + estado de ejecución + cronograma.
 ///
@@ -31,11 +33,16 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
   // instantánea y el escenario reacciona sin canal nuevo.
   final marquee = ref.watch(marqueePlaybackProvider);
 
+  // Y los ajustes de parpadeo también viajan: el escenario no abre las cajas de
+  // Hive, así que los obedece leyéndolos de aquí.
+  final flashSettings = ref.watch(stageFlashSettingsProvider);
+
   if (schedule.isEmpty) {
     return CountdownSnapshot.empty(
       showClock: showClock,
       clockUse24Hour: clockUse24Hour,
       marquee: marquee,
+      flashSettings: flashSettings,
     );
   }
 
@@ -48,7 +55,18 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
   if (override != null) {
     index = override.clamp(0, schedule.length - 1);
   } else if (autoIndex < 0) {
-    // Todavía no empieza el evento: cuenta hacia la primera actividad.
+    // Todavía no empieza el evento: cuenta hacia la primera actividad. Salvo
+    // que el operador haya pedido no proyectarla —la pantalla se queda a la
+    // espera, en negro, con la marquesina si hay alguna en el aire—.
+    if (!ref.watch(showPreShowCountdownProvider)) {
+      return CountdownSnapshot.idle(
+        showClock: showClock,
+        clockUse24Hour: clockUse24Hour,
+        marquee: marquee,
+        flashSettings: flashSettings,
+      );
+    }
+
     final first = schedule.first;
     return CountdownSnapshot(
       current: first,
@@ -63,6 +81,7 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
       showClock: showClock,
       clockUse24Hour: clockUse24Hour,
       marquee: marquee,
+      flashSettings: flashSettings,
     );
   } else {
     index = autoIndex;
@@ -90,10 +109,17 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
       showClock: showClock,
       clockUse24Hour: clockUse24Hour,
       marquee: marquee,
+      flashSettings: flashSettings,
     );
   }
 
-  final remaining = current.endTime.difference(effectiveNow);
+  // Actividad detenida a mano: el conteo queda en cero y la fase pasa a
+  // «finalizada», para que el escenario la muestre detenida y **no** la pinte de
+  // retraso ni haga parpadear el rojo. Aquí no se ha perdido tiempo: se ha
+  // terminado antes.
+  final remaining = run.stopped
+      ? Duration.zero
+      : current.endTime.difference(effectiveNow);
 
   return CountdownSnapshot(
     current: current,
@@ -101,13 +127,15 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
     index: index,
     total: schedule.length,
     remaining: remaining,
-    phase: countdownPhaseFor(remaining),
+    phase: run.stopped ? CountdownPhase.finished : countdownPhaseFor(remaining),
     isPaused: run.isPaused,
     isAutomatic: run.isAutomatic,
+    isStopped: run.stopped,
     isQuickTimer: isQuickTimer,
     startTime: current.startTime,
     showClock: showClock,
     clockUse24Hour: clockUse24Hour,
     marquee: marquee,
+    flashSettings: flashSettings,
   );
 });

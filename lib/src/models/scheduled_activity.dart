@@ -45,12 +45,12 @@ class ScheduledActivity {
   /// Serializa la actividad ya resuelta, para poder enviarla a la ventana del
   /// escenario. [plannedDuration] no se guarda porque se deduce de las horas.
   Map<String, dynamic> toJson() => {
-        'item': item.toJson(),
-        'startTime': startTime.toIso8601String(),
-        'endTime': endTime.toIso8601String(),
-        'isLast': isLast,
-        'hasExplicitEnd': hasExplicitEnd,
-      };
+    'item': item.toJson(),
+    'startTime': startTime.toIso8601String(),
+    'endTime': endTime.toIso8601String(),
+    'isLast': isLast,
+    'hasExplicitEnd': hasExplicitEnd,
+  };
 
   factory ScheduledActivity.fromJson(Map<dynamic, dynamic> json) =>
       ScheduledActivity(
@@ -68,7 +68,32 @@ class ScheduledActivity {
       schedule.indexWhere((s) => s.item.id == item.id);
 
   @override
-  String toString() => 'ScheduledActivity(${item.title}, $startTime → $endTime)';
+  String toString() =>
+      'ScheduledActivity(${item.title}, $startTime → $endTime)';
+}
+
+/// Devuelve el cronograma con todas sus horas movidas [delta].
+///
+/// Es la forma de que el plan siga al operador en directo: si empieza una
+/// actividad a mano o le da un minuto más, el escenario tiene que enseñar las
+/// horas de verdad —las de ahora— y no las que estaban programadas. Se mueven
+/// inicio y fin de cada actividad por igual, así que las duraciones y los huecos
+/// se mantienen intactos.
+List<ScheduledActivity> shiftSchedule(
+  List<ScheduledActivity> schedule,
+  Duration delta,
+) {
+  if (delta == Duration.zero) return schedule;
+  return [
+    for (final slot in schedule)
+      ScheduledActivity(
+        item: slot.item,
+        startTime: slot.startTime.add(delta),
+        endTime: slot.endTime.add(delta),
+        isLast: slot.isLast,
+        hasExplicitEnd: slot.hasExplicitEnd,
+      ),
+  ];
 }
 
 /// Ordena las actividades y deduce la hora de fin de cada una.
@@ -93,7 +118,8 @@ List<ScheduledActivity> resolveSchedule(
     final next = isLast ? null : sorted[i + 1];
 
     final explicitEnd = current.endTime;
-    final hasExplicit = explicitEnd != null && explicitEnd.isAfter(current.startTime);
+    final hasExplicit =
+        explicitEnd != null && explicitEnd.isAfter(current.startTime);
 
     final DateTime derivedEnd;
     if (hasExplicit) {
@@ -104,13 +130,15 @@ List<ScheduledActivity> resolveSchedule(
       derivedEnd = current.startTime.add(lastDuration);
     }
 
-    resolved.add(ScheduledActivity(
-      item: current,
-      startTime: current.startTime,
-      endTime: derivedEnd,
-      isLast: isLast,
-      hasExplicitEnd: hasExplicit,
-    ));
+    resolved.add(
+      ScheduledActivity(
+        item: current,
+        startTime: current.startTime,
+        endTime: derivedEnd,
+        isLast: isLast,
+        hasExplicitEnd: hasExplicit,
+      ),
+    );
   }
   return resolved;
 }

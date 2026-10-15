@@ -23,4 +23,6 @@ class ClockNotifier extends Notifier<DateTime> {
   }
 }
 
-final clockProvider = NotifierProvider<ClockNotifier, DateTime>(ClockNotifier.new);
+final clockProvider = NotifierProvider<ClockNotifier, DateTime>(
+  ClockNotifier.new,
+);

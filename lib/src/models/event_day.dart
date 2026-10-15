@@ -72,41 +72,13 @@ class EventDay {
   ///
   /// Es una resta de instantes, no un cambio de fecha: así el programa mantiene
   /// exactamente sus duraciones y sus huecos, y lo único que cambia es dónde
-  /// arranca.
+  /// arranca. Lo aplica el escenario, nunca lo guardado: el archivo se queda con
+  /// las horas del programa.
   Duration shiftToStartAt(DateTime anchor) {
     final sorted = sortedActivities;
     if (sorted.isEmpty) return Duration.zero;
     return anchor.difference(sorted.first.startTime);
   }
-
-  /// El itinerario tal y como debe ejecutarse cuando se arranca en [anchor]:
-  /// la primera actividad empieza ahí y las demás, donde caigan.
-  List<ActivityItem> activitiesStartingAt(DateTime anchor) {
-    final shift = shiftToStartAt(anchor);
-    if (shift == Duration.zero) return activities;
-    return [for (final item in activities) _shifted(item, shift)];
-  }
-
-  /// Devuelve [item] tal y como está **guardado**, deshaciendo el desplazamiento
-  /// del ensayo.
-  ///
-  /// Es el camino de vuelta de [activitiesStartingAt]: con el día en marcha, la
-  /// lista de actividades ya trae las horas desplazadas, y cualquier cosa que
-  /// vaya a **escribir** esa actividad (editarla, deshacer un borrado) tiene que
-  /// volver a las suyas. Si no, al guardar se escribiría la hora del ensayo en
-  /// el archivo y el evento de verdad se mudaría de hora.
-  ActivityItem storedActivity(ActivityItem item) {
-    if (!forceRun) return item;
-    final shift = shiftToStartAt(forceRunAt!);
-    if (shift == Duration.zero) return item;
-    return _shifted(item, -shift);
-  }
-
-  static ActivityItem _shifted(ActivityItem item, Duration delta) =>
-      item.copyWith(
-        startTime: item.startTime.add(delta),
-        endTime: item.endTime?.add(delta),
-      );
 
   /// Inserta o reemplaza [item] conservando el orden cronológico.
   EventDay upsertActivity(ActivityItem item) {

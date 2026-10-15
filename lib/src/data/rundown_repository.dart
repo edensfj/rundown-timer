@@ -4,6 +4,7 @@ import 'package:hive_ce_flutter/hive_flutter.dart';
 import '../models/event_day.dart';
 import '../models/marquee.dart';
 import '../models/rundown_template.dart';
+import '../models/stage_flash_settings.dart';
 import 'hive_boxes.dart';
 
 /// Acceso a la persistencia. Los boxes ya están abiertos por [initHive], así
@@ -110,6 +111,31 @@ class RundownRepository {
 
   Future<void> saveMarqueeMessages(List<MarqueeMessage> messages) =>
       _meta.put(marqueeMessagesKey, messages.map((m) => m.toJson()).toList());
+
+  // --- Parpadeos del escenario ---------------------------------------------
+
+  /// Ajustes de los avisos parpadeantes. Si nunca se guardaron, los de fábrica.
+  StageFlashSettings loadFlashSettings() {
+    final raw = _meta.get(flashSettingsKey);
+    if (raw is! Map) return const StageFlashSettings();
+    return StageFlashSettings.fromJson(raw.cast<dynamic, dynamic>());
+  }
+
+  Future<void> saveFlashSettings(StageFlashSettings settings) =>
+      _meta.put(flashSettingsKey, settings.toJson());
+
+  // --- Interruptores sueltos -----------------------------------------------
+
+  /// Lee una preferencia que es un simple sí/no.
+  ///
+  /// Para lo que no merece una caja con su propio modelo —un interruptor, una
+  /// opción—: la clave la pone quien la usa.
+  bool loadFlag(String key, {bool fallback = false}) {
+    final raw = _meta.get(key);
+    return raw is bool ? raw : fallback;
+  }
+
+  Future<void> saveFlag(String key, bool value) => _meta.put(key, value);
 }
 
 /// Las cajas se abren en `main()` antes de `runApp`, por lo que este provider

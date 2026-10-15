@@ -53,6 +53,7 @@ class StagePreviewPanel extends ConsumerWidget {
                 _StatusDot(
                   phase: snapshot.phase,
                   showClock: snapshot.showClock,
+                  isStopped: snapshot.isStopped,
                 ),
               ],
             ),
@@ -102,7 +103,11 @@ class StagePreviewPanel extends ConsumerWidget {
 }
 
 class _StatusDot extends StatelessWidget {
-  const _StatusDot({required this.phase, this.showClock = false});
+  const _StatusDot({
+    required this.phase,
+    this.showClock = false,
+    this.isStopped = false,
+  });
 
   final CountdownPhase phase;
 
@@ -110,9 +115,17 @@ class _StatusDot extends StatelessWidget {
   /// neutro para no confundir al operador.
   final bool showClock;
 
+  /// La actividad está detenida a mano. En el escenario eso no se ve —la sala ve
+  /// una pantalla en negro—, así que el aviso es solo de aquí.
+  final bool isStopped;
+
   @override
   Widget build(BuildContext context) {
-    final accent = showClock ? Colors.white70 : phase.accent;
+    final accent = isStopped
+        ? Theme.of(context).colorScheme.outline
+        : showClock
+        ? Colors.white70
+        : phase.accent;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -124,7 +137,11 @@ class _StatusDot extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         Text(
-          showClock ? 'HORA ACTUAL' : _label(phase),
+          isStopped
+              ? 'DETENIDA'
+              : showClock
+              ? 'HORA ACTUAL'
+              : _label(phase),
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
             color: accent,
             fontWeight: FontWeight.w700,
@@ -136,6 +153,7 @@ class _StatusDot extends StatelessWidget {
   }
 
   String _label(CountdownPhase phase) => switch (phase) {
+    CountdownPhase.idle => 'EN ESPERA',
     CountdownPhase.preShow => 'PREVIO',
     CountdownPhase.normal => 'EN CURSO',
     CountdownPhase.warning => 'ÚLTIMOS MINUTOS',
@@ -149,28 +167,44 @@ class _StatusDot extends StatelessWidget {
 /// Vive en el panel de vista previa porque es lo que el operador ve salir al
 /// escenario. Al cambiar, la instantánea cambia y el controlador la empuja a
 /// la ventana sin más.
+///
+/// Con una actividad en marcha, la hora actual queda **desactivada**: cambiar el
+/// modo cambia lo que está viendo la sala.
 class _StageModeSwitch extends ConsumerWidget {
   const _StageModeSwitch();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(stageModeProvider);
+    final snapshot = ref.watch(countdownProvider);
+
+    // Con una actividad en marcha la hora actual se desactiva: cambiar el modo
+    // cambia lo que está viendo la sala, y eso en directo no se decide por
+    // curiosidad. Para marcar la hora hay que detener antes la actividad.
+    final enMarcha =
+        snapshot.phase == CountdownPhase.normal ||
+        snapshot.phase == CountdownPhase.warning ||
+        snapshot.phase == CountdownPhase.overtime;
 
     // Al 100 % del ancho: los segmentos se reparten el espacio en vez de
     // quedar apelotonados a la izquierda.
     return SizedBox(
       width: double.infinity,
       child: SegmentedButton<StageMode>(
-        segments: const [
-          ButtonSegment(
+        segments: [
+          const ButtonSegment(
             value: StageMode.countdown,
             icon: Icon(Icons.timer_outlined, size: 16),
             label: Text('Cuenta atrás'),
           ),
           ButtonSegment(
             value: StageMode.clock,
-            icon: Icon(Icons.schedule_rounded, size: 16),
-            label: Text('Hora actual'),
+            enabled: !enMarcha,
+            tooltip: enMarcha
+                ? 'No se puede cambiar con una actividad en marcha'
+                : 'Proyectar solo la hora',
+            icon: const Icon(Icons.schedule_rounded, size: 16),
+            label: const Text('Hora actual'),
           ),
         ],
         selected: {mode},
@@ -250,7 +284,13 @@ class _PreviewDetails extends ConsumerWidget {
       return Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         child: Text(
-          'Agrega actividades para ver la vista previa.',
+          snapshot.phase == CountdownPhase.idle
+              // En espera no hay actividad que mirar, pero tampoco es un fallo:
+              // el escenario está en negro porque todavía no empieza nada. El
+              // interruptor de la cuenta previa vive en Configuración.
+              ? 'El escenario está en espera: no hay nada en marcha. Al ejecutar '
+                    'una actividad o empezar el día aparecerá la cuenta atrás.'
+              : 'Agrega actividades para ver la vista previa.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: scheme.onSurfaceVariant,
           ),
@@ -303,12 +343,16 @@ class _PreviewDetails extends ConsumerWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            [
-              if (!quick)
-                'Actividad ${snapshot.index + 1} de ${snapshot.total}',
-              if (snapshot.next != null)
-                'siguiente ${TimeFormatters.time(snapshot.next!.startTime)}',
-            ].join('  ·  '),
+            snapshot.isStopped
+                // El escenario está en negro a propósito: aquí se explica, que
+                // quien lo ve es el operador.
+                ? 'Detenida a mano · la sala ve la pantalla en negro'
+                : [
+                    if (!quick)
+                      'Actividad ${snapshot.index + 1} de ${snapshot.total}',
+                    if (snapshot.next != null)
+                      'siguiente ${TimeFormatters.time(snapshot.next!.startTime)}',
+                  ].join('  ·  '),
             style: theme.textTheme.bodySmall?.copyWith(
               color: scheme.onSurfaceVariant,
             ),
@@ -325,6 +369,18 @@ class _PreviewDetails extends ConsumerWidget {
                       ? Icons.play_arrow_rounded
                       : Icons.pause_rounded,
                 ),
+              ),
+              const SizedBox(width: 6),
+              IconButton.outlined(
+                // Detener no es pausar: da la actividad por terminada aunque su
+                // hora de fin no hubiera llegado. Puliéndolo otra vez, vuelve a
+                // contar lo que le quedaba.
+                onPressed: () => run.toggleStop(),
+                tooltip: snapshot.isStopped
+                    ? 'Reanudar el conteo'
+                    : 'Detener la actividad',
+                isSelected: snapshot.isStopped,
+                icon: const Icon(Icons.stop_circle_outlined),
               ),
               const SizedBox(width: 6),
               IconButton.outlined(

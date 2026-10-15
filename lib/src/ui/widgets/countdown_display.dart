@@ -68,9 +68,7 @@ class CountdownDisplay extends StatelessWidget {
                             height: 1.0,
                             fontWeight: FontWeight.w700,
                             color: phase.foreground,
-                            fontFeatures: const [
-                              FontFeature.tabularFigures(),
-                            ],
+                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
                         ),
                 ),
@@ -124,10 +122,10 @@ class _FinishedMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Text(
+    return Text(
       'FINALIZADO',
       maxLines: 1,
-      style: TextStyle(
+      style: const TextStyle(
         fontFamily: AppConfig.countdownFontFamily,
         fontSize: CountdownDisplay._baseFontSize,
         height: 1.0,

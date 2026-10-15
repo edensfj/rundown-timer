@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'countdown_phase.dart';
 import 'marquee.dart';
 import 'scheduled_activity.dart';
+import 'stage_flash_settings.dart';
 
 /// Instantánea inmutable que la UI del modo escenario necesita para pintarse.
 ///
@@ -20,11 +21,13 @@ class CountdownSnapshot {
     this.isPaused = false,
     this.isAutomatic = true,
     this.isFinished = false,
+    this.isStopped = false,
     this.isQuickTimer = false,
     this.startTime,
     this.showClock = false,
     this.clockUse24Hour = true,
     this.marquee,
+    this.flashSettings = const StageFlashSettings(),
   });
 
   /// Sin actividades: la pantalla muestra un estado vacío.
@@ -32,6 +35,7 @@ class CountdownSnapshot {
     this.showClock = false,
     this.clockUse24Hour = true,
     this.marquee,
+    this.flashSettings = const StageFlashSettings(),
   }) : current = null,
        next = null,
        index = 0,
@@ -41,6 +45,32 @@ class CountdownSnapshot {
        isPaused = false,
        isAutomatic = true,
        isFinished = false,
+       isStopped = false,
+       isQuickTimer = false,
+       startTime = null;
+
+  /// Nada en marcha y sin proyectar la cuenta previa: la pantalla se queda a la
+  /// espera, en negro.
+  ///
+  /// No es [empty]: allí no hay nada que presentar porque falta la programación;
+  /// aquí no hay nada porque todavía no ha empezado el evento, y eso es lo que el
+  /// operador ha pedido. Los ajustes del escenario y la marquesina se conservan,
+  /// porque siguen siendo válidos aunque el reloj no esté en pantalla.
+  const CountdownSnapshot.idle({
+    this.showClock = false,
+    this.clockUse24Hour = true,
+    this.marquee,
+    this.flashSettings = const StageFlashSettings(),
+  }) : current = null,
+       next = null,
+       index = 0,
+       total = 0,
+       remaining = Duration.zero,
+       phase = CountdownPhase.idle,
+       isPaused = false,
+       isAutomatic = true,
+       isFinished = false,
+       isStopped = false,
        isQuickTimer = false,
        startTime = null;
 
@@ -68,6 +98,10 @@ class CountdownSnapshot {
 
   final bool isFinished;
 
+  /// `true` si el operador terminó la actividad a mano. No es retraso: el
+  /// escenario la enseña detenida y sin alerta roja.
+  final bool isStopped;
+
   /// `true` cuando lo que se cuenta es un contador suelto y no una actividad
   /// del itinerario. Cambia los textos de la cabecera y del pie.
   final bool isQuickTimer;
@@ -92,6 +126,11 @@ class CountdownSnapshot {
   /// el modo reloj.
   final MarqueeOverlay? marquee;
 
+  /// Ajustes de los parpadeos del escenario. Viajan con la instantánea para que
+  /// el aviso verde, naranja y rojo se comporte igual en el panel y en la
+  /// pantalla proyectada, que no comparten memoria.
+  final StageFlashSettings flashSettings;
+
   bool get hasActivities => current != null;
 
   bool get isLast => next == null;
@@ -105,6 +144,7 @@ class CountdownSnapshot {
   factory CountdownSnapshot.preview({
     required List<ScheduledActivity> slots,
     required int index,
+    StageFlashSettings flashSettings = const StageFlashSettings(),
   }) {
     assert(slots.isNotEmpty, 'previsualizar exige al menos una actividad');
     final safe = index.clamp(0, slots.length - 1);
@@ -117,6 +157,7 @@ class CountdownSnapshot {
       remaining: current.endTime.difference(current.startTime),
       phase: CountdownPhase.normal,
       startTime: current.startTime,
+      flashSettings: flashSettings,
     );
   }
 
@@ -135,11 +176,13 @@ class CountdownSnapshot {
     'isPaused': isPaused,
     'isAutomatic': isAutomatic,
     'isFinished': isFinished,
+    'isStopped': isStopped,
     'isQuickTimer': isQuickTimer,
     'startTime': startTime?.toIso8601String(),
     'showClock': showClock,
     'clockUse24Hour': clockUse24Hour,
     'marquee': marquee?.toJson(),
+    'flashSettings': flashSettings.toJson(),
   };
 
   factory CountdownSnapshot.fromJson(Map<dynamic, dynamic> json) =>
@@ -155,16 +198,23 @@ class CountdownSnapshot {
         isPaused: json['isPaused'] as bool? ?? false,
         isAutomatic: json['isAutomatic'] as bool? ?? true,
         isFinished: json['isFinished'] as bool? ?? false,
+        isStopped: json['isStopped'] as bool? ?? false,
         isQuickTimer: json['isQuickTimer'] as bool? ?? false,
         startTime: _readDate(json['startTime']),
         showClock: json['showClock'] as bool? ?? false,
         clockUse24Hour: json['clockUse24Hour'] as bool? ?? true,
         marquee: _readMarquee(json['marquee']),
+        flashSettings: _readFlashSettings(json['flashSettings']),
       );
 
   static MarqueeOverlay? _readMarquee(Object? value) {
     if (value is! Map) return null;
     return MarqueeOverlay.fromJson(value.cast<dynamic, dynamic>());
+  }
+
+  static StageFlashSettings _readFlashSettings(Object? value) {
+    if (value is! Map) return const StageFlashSettings();
+    return StageFlashSettings.fromJson(value.cast<dynamic, dynamic>());
   }
 
   static ScheduledActivity? _readActivity(Object? value) {
@@ -199,13 +249,16 @@ class CountdownSnapshot {
           other.isPaused == isPaused &&
           other.isAutomatic == isAutomatic &&
           other.isFinished == isFinished &&
+          other.isStopped == isStopped &&
           other.isQuickTimer == isQuickTimer &&
           other.startTime == startTime &&
           other.showClock == showClock &&
           other.clockUse24Hour == clockUse24Hour &&
           // El pase entero, con sus ajustes: cambiarlos mientras el texto está
           // en pantalla tiene que notarlo la ventana del escenario.
-          other.marquee == marquee;
+          other.marquee == marquee &&
+          // Lo mismo con los parpadeos: tocar sus ajustes tiene que viajar.
+          other.flashSettings == flashSettings;
 
   @override
   int get hashCode => Object.hash(
@@ -218,10 +271,12 @@ class CountdownSnapshot {
     isPaused,
     isAutomatic,
     isFinished,
+    isStopped,
     isQuickTimer,
     startTime,
     showClock,
     clockUse24Hour,
     marquee,
+    flashSettings,
   );
 }

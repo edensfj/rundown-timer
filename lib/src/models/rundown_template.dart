@@ -42,17 +42,19 @@ class TemplateActivity {
   }
 
   Map<String, dynamic> toJson() => {
-        'title': title,
-        'durationSeconds': duration.inSeconds,
-        'description': description,
-        'responsible': responsible,
-        'location': location,
-      };
+    'title': title,
+    'durationSeconds': duration.inSeconds,
+    'description': description,
+    'responsible': responsible,
+    'location': location,
+  };
 
   factory TemplateActivity.fromJson(Map<dynamic, dynamic> json) =>
       TemplateActivity(
         title: (json['title'] as String?) ?? '',
-        duration: Duration(seconds: (json['durationSeconds'] as num?)?.toInt() ?? 0),
+        duration: Duration(
+          seconds: (json['durationSeconds'] as num?)?.toInt() ?? 0,
+        ),
         description: _asString(json['description']),
         responsible: _asString(json['responsible']),
         location: _asString(json['location']),
@@ -81,10 +83,8 @@ class RundownTemplate {
   final String name;
   final List<TemplateActivity> activities;
 
-  Duration get totalDuration => activities.fold(
-        Duration.zero,
-        (sum, a) => sum + a.duration,
-      );
+  Duration get totalDuration =>
+      activities.fold(Duration.zero, (sum, a) => sum + a.duration);
 
   bool get isEmpty => activities.isEmpty;
 
@@ -128,10 +128,10 @@ class RundownTemplate {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'activities': activities.map((a) => a.toJson()).toList(),
-      };
+    'id': id,
+    'name': name,
+    'activities': activities.map((a) => a.toJson()).toList(),
+  };
 
   factory RundownTemplate.fromJson(Map<dynamic, dynamic> json) =>
       RundownTemplate(
@@ -163,15 +163,17 @@ List<ActivityItem> materializeTemplate(
     final activity = template.activities[i];
     final end = cursor.add(activity.duration);
 
-    items.add(ActivityItem(
-      id: nextId(i),
-      title: activity.title,
-      startTime: cursor,
-      endTime: end,
-      description: activity.description,
-      responsible: activity.responsible,
-      location: activity.location,
-    ));
+    items.add(
+      ActivityItem(
+        id: nextId(i),
+        title: activity.title,
+        startTime: cursor,
+        endTime: end,
+        description: activity.description,
+        responsible: activity.responsible,
+        location: activity.location,
+      ),
+    );
 
     cursor = end;
   }

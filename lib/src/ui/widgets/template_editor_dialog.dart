@@ -61,9 +61,9 @@ class _TemplateEditorDialogState extends State<TemplateEditorDialog> {
 
   /// Duración total actual, para ir mostrando el resultado mientras se edita.
   Duration get _total => _filas.fold(
-        Duration.zero,
-        (sum, fila) => sum + (fila.duracionValor ?? Duration.zero),
-      );
+    Duration.zero,
+    (sum, fila) => sum + (fila.duracionValor ?? Duration.zero),
+  );
 
   bool get _valido =>
       _nombre.text.trim().isNotEmpty &&
@@ -168,8 +168,9 @@ class _TemplateEditorDialogState extends State<TemplateEditorDialog> {
                             const SizedBox(height: 10),
                             Text(
                               'Sin actividades todavía',
-                              style: theme.textTheme.bodyMedium
-                                  ?.copyWith(color: scheme.onSurfaceVariant),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
                             ),
                           ],
                         ),
@@ -218,17 +219,22 @@ class _TemplateEditorDialogState extends State<TemplateEditorDialog> {
 
 /// Estado mutable de una fila del editor.
 class _Row {
-  _Row({String titulo = '', String duracion = '', this.description, this.responsible, this.location})
-      : titulo = TextEditingController(text: titulo),
-        duracion = TextEditingController(text: duracion);
+  _Row({
+    String titulo = '',
+    String duracion = '',
+    this.description,
+    this.responsible,
+    this.location,
+  }) : titulo = TextEditingController(text: titulo),
+       duracion = TextEditingController(text: duracion);
 
   factory _Row.fromTemplate(TemplateActivity a) => _Row(
-        titulo: a.title,
-        duracion: formatDurationInput(a.duration),
-        description: a.description,
-        responsible: a.responsible,
-        location: a.location,
-      );
+    titulo: a.title,
+    duracion: formatDurationInput(a.duration),
+    description: a.description,
+    responsible: a.responsible,
+    location: a.location,
+  );
 
   factory _Row.vacia() =>
       _Row(duracion: formatDurationInput(kTemplateDefaultDuration));
@@ -248,12 +254,12 @@ class _Row {
   bool get valido => titulo.text.trim().isNotEmpty && duracionValor != null;
 
   TemplateActivity aTemplateActivity() => TemplateActivity(
-        title: titulo.text.trim(),
-        duration: duracionValor ?? kTemplateDefaultDuration,
-        description: description,
-        responsible: responsible,
-        location: location,
-      );
+    title: titulo.text.trim(),
+    duration: duracionValor ?? kTemplateDefaultDuration,
+    description: description,
+    responsible: responsible,
+    location: location,
+  );
 
   void dispose() {
     titulo.dispose();
@@ -342,9 +348,13 @@ class _FilaEditor extends StatelessWidget {
             child: SizedBox(
               width: 78,
               child: Text(
-                duracion == null ? 'no válido' : TimeFormatters.humanDuration(duracion),
+                duracion == null
+                    ? 'no válido'
+                    : TimeFormatters.humanDuration(duracion),
                 style: theme.textTheme.labelSmall?.copyWith(
-                  color: duracion == null ? scheme.error : scheme.onSurfaceVariant,
+                  color: duracion == null
+                      ? scheme.error
+                      : scheme.onSurfaceVariant,
                 ),
               ),
             ),

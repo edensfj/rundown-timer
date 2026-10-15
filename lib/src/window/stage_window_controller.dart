@@ -12,6 +12,8 @@ import '../core/app_config.dart';
 import '../models/countdown_snapshot.dart';
 import '../state/countdown_provider.dart';
 import '../state/displays_provider.dart';
+import '../state/run_show_provider.dart';
+import 'stage_run_command.dart';
 import 'stage_window.dart';
 import 'window_placement.dart';
 
@@ -136,8 +138,9 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     if (controller == null) return;
 
     final vivas = await WindowController.getAll();
-    final sigueAbierta =
-        vivas.any((window) => window.windowId == controller.windowId);
+    final sigueAbierta = vivas.any(
+      (window) => window.windowId == controller.windowId,
+    );
     if (sigueAbierta) return;
 
     _controller = null;
@@ -271,7 +274,9 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
           frame: await _windowedFrame(displays),
           fullscreen: false,
         );
-        ref.read(stageNoticeProvider.notifier).show(
+        ref
+            .read(stageNoticeProvider.notifier)
+            .show(
               'Se ha desconectado la pantalla del escenario: '
               'el reloj vuelve a una ventana normal.',
             );
@@ -285,9 +290,9 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
         _stageFullscreen = true;
         _degradedToWindow = false;
         await _sendStageWindow(frame: visibleRectOf(display), fullscreen: true);
-        ref.read(stageNoticeProvider.notifier).show(
-              'La pantalla del escenario ha vuelto.',
-            );
+        ref
+            .read(stageNoticeProvider.notifier)
+            .show('La pantalla del escenario ha vuelto.');
     }
   }
 
@@ -329,6 +334,17 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
       WindowConfiguration(arguments: args.encode()),
     );
 
+    // Los botones del escenario llegan por aquí y se cumplen en el panel.
+    await controller.setWindowMethodHandler((call) async {
+      if (call.method != StageRunCommand.channelKey) return null;
+      final command = StageRunCommand.tryDecode(jsonEncode(call.arguments));
+      command?.applyTo(
+        ref.read(runShowProvider.notifier),
+        eventIsFinished: ref.read(countdownProvider).isFinished,
+      );
+      return null;
+    });
+
     _controller = controller;
     _pushFailures = 0;
     state = const StageWindowStatus(isOpen: true);
@@ -367,12 +383,39 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     unawaited(process.exitCode.then((_) => _onProcessGone(process)));
 
     // El escenario va en su propio proceso: si algo revienta dentro, su aviso
-    // tiene que verse donde se lanzó (la consola del panel). Si no hay consola,
-    // esto no molesta a nadie.
-    process.stdout.transform(utf8.decoder).listen(stdout.write, onError: (_) {});
-    process.stderr.transform(utf8.decoder).listen(stderr.write, onError: (_) {});
+    // tiene que verse donde se lanzó (la consola del panel). Y sus botones
+    // llegan por aquí: el escenario no maneja el reloj, se lo pide a este
+    // proceso, que es quien tiene el estado.
+    process.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen(_onStageOutputLine, onError: (_) {});
+    process.stderr
+        .transform(utf8.decoder)
+        .listen(stderr.write, onError: (_) {});
 
     await push(ref.read(countdownProvider));
+  }
+
+  /// Una línea de la salida del escenario: una orden de sus botones o un aviso.
+  ///
+  /// Las órdenes se cumplen aquí, en el panel, que es donde vive el estado del
+  /// reloj. Lo que no sea orden se escribe en la consola del panel, que es donde
+  /// se saw los avisos si el escenario peta.
+  void _onStageOutputLine(String line) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty) return;
+
+    final command = StageRunCommand.tryDecode(trimmed);
+    if (command != null) {
+      command.applyTo(
+        ref.read(runShowProvider.notifier),
+        eventIsFinished: ref.read(countdownProvider).isFinished,
+      );
+      return;
+    }
+
+    stdout.writeln(trimmed);
   }
 
   Future<void> _onProcessGone(Process process) async {
@@ -569,8 +612,8 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
 
 final stageWindowProvider =
     NotifierProvider<StageWindowNotifier, StageWindowStatus>(
-  StageWindowNotifier.new,
-);
+      StageWindowNotifier.new,
+    );
 
 /// Aviso del escenario para el operador, de una vez.
 ///

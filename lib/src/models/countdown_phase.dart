@@ -7,6 +7,14 @@ enum CountdownPhase {
   /// El evento todavía no empieza: cuenta hacia el inicio de la primera actividad.
   preShow,
 
+  /// No hay nada en marcha y el operador ha pedido **no** proyectar la cuenta
+  /// previa: la pantalla se queda en negro, a la espera.
+  ///
+  /// No es lo mismo que un día sin actividades —eso es un error de programación y
+  /// se avisa—: aquí el escenario está simplemente a la espera, porque todavía no
+  /// ha empezado nada.
+  idle,
+
   /// Queda más de [warningThreshold].
   normal,
 
@@ -71,6 +79,7 @@ extension CountdownPhaseStyle on CountdownPhase {
   /// Color de acento: badge, barra de progreso e iconos.
   Color get accent => switch (this) {
     CountdownPhase.preShow => const Color(0xFF60A5FA),
+    CountdownPhase.idle => const Color(0xFF9CA3AF),
     CountdownPhase.normal => const Color(0xFF22C55E),
     CountdownPhase.warning => const Color(0xFFFBBF24),
     CountdownPhase.overtime => StageColors.alertAccent,
