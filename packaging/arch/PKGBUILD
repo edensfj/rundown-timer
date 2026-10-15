@@ -1,0 +1,20 @@
+# Tamaño de mantenimiento: https://wiki.archlinux.org/title/PKGBUILD
+# La versión (1.3.3) la inyecta build.sh desde pubspec.yaml.
+pkgname=rundown-timer
+pkgver=1.3.3
+pkgrel=1
+pkgdesc="Gestión de itinerarios y control de tiempos en vivo (Rundown / Event Timer)"
+arch=('x86_64')
+url="https://github.com/edensfj/rundown-timer"
+license=('custom')
+depends=('gtk3')
+source=()
+sha256sums=()
+
+package() {
+  # Todo el contenido ya viene montado en pkgroot/ (bundle de Flutter en
+  # /opt, .desktop, metainfo e iconos). Aquí solo se copia al paquete.
+  cp -a "$startdir/pkgroot/." "$pkgdir/"
+  mkdir -p "$pkgdir/usr/bin"
+  ln -s /opt/rundown-timer/rundown "$pkgdir/usr/bin/rundown-timer"
+}

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Rundown Timer
+GenericName=Temporizador de escaleta
+Comment=Gestión de itinerarios y control de tiempos en vivo
+Exec=/opt/rundown-timer/rundown
+Icon=rundown-timer
+Terminal=false
+Categories=Office;ProjectManagement;
+StartupWMClass=com.edens.rundown
+Keywords=rundown;timer;escenario;cuenta atrás;itinerario;

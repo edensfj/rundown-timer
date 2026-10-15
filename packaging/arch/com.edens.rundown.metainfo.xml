@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.edens.rundown</id>
+  <name>Rundown Timer</name>
+  <summary>Gestión de itinerarios y control de tiempos en vivo</summary>
+  <description>
+    <p>
+      Temporizador de escaleta para eventos en directo: panel de control con
+      la lista de actividades y reloj de escenario en ventana propia a
+      pantalla completa en la pantalla elegida.
+    </p>
+  </description>
+  <developer id="edensfj">
+    <name>edensfj</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>custom</project_license>
+  <url type="homepage">https://github.com/edensfj/rundown-timer</url>
+  <launchable type="desktop-id">com.edens.rundown.desktop</launchable>
+</component>
