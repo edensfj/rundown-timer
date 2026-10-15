@@ -95,16 +95,25 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
   void initState() {
     super.initState();
 
-    final existing = widget.existing;
-    _startTime = existing?.startTime ??
-        TimeFormatters.defaultStartForDay(widget.day.date);
+    final day = widget.day;
+    // Con el día marcado para ejecutarse hoy, la lista de la que viene la
+    // actividad ya lleva las fechas de hoy. Aquí se vuelve a la fecha real del
+    // día, que es la que se guarda al pulsar «Guardar».
+    final existing = widget.existing == null
+        ? null
+        : day.storedActivity(widget.existing!);
+
+    _startTime =
+        existing?.startTime ?? TimeFormatters.defaultStartForDay(day.date);
     _endTime = existing?.endTime;
 
     _titleController = TextEditingController(text: existing?.title ?? '');
-    _descriptionController =
-        TextEditingController(text: existing?.description ?? '');
-    _responsibleController =
-        TextEditingController(text: existing?.responsible ?? '');
+    _descriptionController = TextEditingController(
+      text: existing?.description ?? '',
+    );
+    _responsibleController = TextEditingController(
+      text: existing?.responsible ?? '',
+    );
     _locationController = TextEditingController(text: existing?.location ?? '');
   }
 
@@ -174,8 +183,11 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
     if (picked == null || !mounted) return;
 
     setState(() {
-      final value =
-          TimeFormatters.at(widget.day.date, picked.hour, picked.minute);
+      final value = TimeFormatters.at(
+        widget.day.date,
+        picked.hour,
+        picked.minute,
+      );
       if (isEnd) {
         _endTime = value;
         _endError = null;
@@ -246,14 +258,16 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
               children: [
                 Text(
                   _isEditing ? 'Editar actividad' : 'Nueva actividad',
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   widget.day.name,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -316,8 +330,9 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
               _QuickChip(
                 label: 'Ahora',
                 onTap: () => setState(() {
-                  _startTime =
-                      TimeFormatters.defaultStartForDay(widget.day.date);
+                  _startTime = TimeFormatters.defaultStartForDay(
+                    widget.day.date,
+                  );
                   _endError = null;
                 }),
               ),
@@ -396,10 +411,7 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            Switch(
-              value: explicit,
-              onChanged: _toggleExplicitEnd,
-            ),
+            Switch(value: explicit, onChanged: _toggleExplicitEnd),
           ],
         ),
         const SizedBox(height: 4),
@@ -431,14 +443,19 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
             ),
             child: Row(
               children: [
-                Icon(Icons.auto_awesome, size: 18, color: scheme.onSurfaceVariant),
+                Icon(
+                  Icons.auto_awesome,
+                  size: 18,
+                  color: scheme.onSurfaceVariant,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     'Termina a las ${TimeFormatters.time(inferred)} · se deduce '
                     'de la siguiente actividad',
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: scheme.onSurfaceVariant),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
@@ -449,9 +466,10 @@ class _ActivityFormDrawerState extends State<ActivityFormDrawer> {
           explicit
               ? 'El fin fijado a mano manda sobre la deducción automática.'
               : 'Activa el interruptor solo si esta actividad tiene un cierre '
-                  'propio, como una fiesta de cierre o un refrigerio corto.',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: scheme.onSurfaceVariant),
+                    'propio, como una fiesta de cierre o un refrigerio corto.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
         ),
       ],
     );

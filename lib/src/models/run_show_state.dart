@@ -23,7 +23,13 @@ class RunShowState {
     this.sourceId,
   });
 
-  /// Índice elegido a mano. `null` significa «seguir el reloj automáticamente».
+  /// Índice de la actividad que se está controlando.
+  ///
+  /// Lo fija el operador (o el reloj, al empezar el evento) y a partir de ahí no
+  /// se mueve solo: el programa avanza cuando el operador lo dice.
+  ///
+  /// `null` significa que el evento todavía no ha empezado y se está esperando a
+  /// que llegue su hora.
   final int? indexOverride;
 
   /// Instante en el que se pausó. `null` significa que está corriendo.
@@ -40,9 +46,11 @@ class RunShowState {
 
   bool get isPaused => pausedAt != null;
 
-  /// `true` cuando el índice lo determina el reloj y no el operador.
+  /// `true` mientras se espera a que llegue la hora del evento: es el único
+  /// momento en el que el índice lo decide el reloj.
   bool get isAutomatic => indexOverride == null;
 
+  /// `true` en cuanto hay una actividad fija en pantalla.
   bool get hasOverride => indexOverride != null;
 
   /// Reloj de referencia del temporizador, corregido por pausa y offset.
@@ -56,9 +64,12 @@ class RunShowState {
     String? sourceId,
   }) {
     return RunShowState(
-      indexOverride:
-          identical(indexOverride, _unset) ? this.indexOverride : indexOverride as int?,
-      pausedAt: identical(pausedAt, _unset) ? this.pausedAt : pausedAt as DateTime?,
+      indexOverride: identical(indexOverride, _unset)
+          ? this.indexOverride
+          : indexOverride as int?,
+      pausedAt: identical(pausedAt, _unset)
+          ? this.pausedAt
+          : pausedAt as DateTime?,
       offset: offset ?? this.offset,
       eventFinished: eventFinished ?? this.eventFinished,
       sourceId: sourceId ?? this.sourceId,

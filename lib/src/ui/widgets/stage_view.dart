@@ -218,29 +218,31 @@ class _WithMarquee extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final prominent = overlay.settings.prominent;
-        final bandFraction = prominent
-            ? AppConfig.marqueeProminentBandFraction
-            : AppConfig.marqueeBandFraction;
-        final bandHeight = constraints.maxHeight * bandFraction;
+        final settings = overlay.settings;
+        final showTimer = settings.showTimer;
+        final bandHeight =
+            constraints.maxHeight * marqueeBandFractionFor(settings);
         // El alto de letra se mide sobre la banda, no sobre la pantalla entera:
         // así el texto llena el espacio que se le da, como el reloj.
-        final fontSize = bandHeight * overlay.settings.fontScale;
+        final fontSize = bandHeight * settings.fontScale;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: _StageContent(
-                snapshot: snapshot,
-                alertPulse: alertPulse,
-                // Protagonista: el reloj se encoge y la cabecera se queda en lo
-                // esencial, que deja sitio al texto. Si no, el reloj se queda
-                // tal cual y el texto pasa por debajo.
-                compact: prominent ? true : compact,
+            // Solo texto: la banda se lleva la pantalla entera y no hay reloj.
+            if (showTimer) ...[
+              Expanded(
+                child: _StageContent(
+                  snapshot: snapshot,
+                  alertPulse: alertPulse,
+                  // Protagonista: el reloj se encoge y la cabecera se queda en
+                  // lo esencial, que deja sitio al texto. Si no, el reloj se
+                  // queda tal cual y el texto pasa por debajo.
+                  compact: settings.prominent ? true : compact,
+                ),
               ),
-            ),
-            const Divider(height: 1, thickness: 1, color: Color(0x24FFFFFF)),
+              const Divider(height: 1, thickness: 1, color: Color(0x24FFFFFF)),
+            ],
             SizedBox(
               height: bandHeight,
               child: MarqueeBand(overlay: overlay, fontSize: fontSize),

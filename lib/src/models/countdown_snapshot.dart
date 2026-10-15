@@ -203,7 +203,9 @@ class CountdownSnapshot {
           other.startTime == startTime &&
           other.showClock == showClock &&
           other.clockUse24Hour == clockUse24Hour &&
-          other.marquee?.runId == marquee?.runId;
+          // El pase entero, con sus ajustes: cambiarlos mientras el texto está
+          // en pantalla tiene que notarlo la ventana del escenario.
+          other.marquee == marquee;
 
   @override
   int get hashCode => Object.hash(
@@ -220,6 +222,6 @@ class CountdownSnapshot {
     startTime,
     showClock,
     clockUse24Hour,
-    marquee?.runId,
+    marquee,
   );
 }

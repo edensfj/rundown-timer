@@ -169,7 +169,7 @@ class _EmbeddedStageScreenState extends ConsumerState<EmbeddedStageScreen>
           const SingleActivator(LogicalKeyboardKey.pageDown): _next,
           const SingleActivator(LogicalKeyboardKey.pageUp): _previous,
           const SingleActivator(LogicalKeyboardKey.keyR): _restart,
-          const SingleActivator(LogicalKeyboardKey.keyA): _run.followClock,
+          const SingleActivator(LogicalKeyboardKey.keyA): _run.syncWithClock,
           const SingleActivator(LogicalKeyboardKey.keyE): _toggleFinished,
           const SingleActivator(LogicalKeyboardKey.keyF): _toggleFullscreen,
           const SingleActivator(LogicalKeyboardKey.escape): _exit,
@@ -247,7 +247,7 @@ class _EmbeddedStageScreenState extends ConsumerState<EmbeddedStageScreen>
                   onSubtractTime: () => _addTime(const Duration(minutes: -1)),
                   onAddTime: () => _addTime(const Duration(minutes: 1)),
                   onToggleAutomatic: () {
-                    _run.followClock();
+                    _run.syncWithClock();
                     _keepControlsVisible();
                   },
                   onToggleFinished: _toggleFinished,

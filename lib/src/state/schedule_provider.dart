@@ -7,6 +7,7 @@ import '../models/scheduled_activity.dart';
 import 'clock_provider.dart';
 import 'quick_timer_provider.dart';
 import 'rundown_provider.dart';
+import 'run_show_provider.dart';
 import 'selected_day_provider.dart';
 
 /// Día actualmente en edición.
@@ -37,10 +38,48 @@ final activeDayIdProvider = Provider<String?>(
 /// El estado del escenario observa este valor para reiniciarse cuando la fuente
 /// cambia. Sin esto, al pasar de un contador al itinerario el índice guardado
 /// podría apuntar a una actividad que ya no existe.
+///
+/// También entra el arranque del ensayo: al activarlo las actividades cambian
+/// de hora, así que el estado del escenario vuelve a empezar y sigue el reloj
+/// desde el principio en vez de quedarse en un índice de la fecha anterior.
 final stageSourceIdProvider = Provider<String?>((ref) {
   final quick = ref.watch(quickTimerProvider);
   if (quick != null) return 'quick:${quick.id}';
-  return 'day:${ref.watch(activeDayProvider)?.id}';
+
+  final day = ref.watch(activeDayProvider);
+  if (day == null) return null;
+  final anchor = day.forceRunAt;
+  return 'day:${day.id}${anchor == null ? '' : ':run@$anchor'}';
+});
+
+/// El día natural de hoy, a medianoche.
+///
+/// Depende del reloj global, pero como dos días seguidos dan el mismo valor, el
+/// resto de providers que lo observan **no** se reconstruyen segundo a segundo:
+/// Riverpod solo avisa cuando el valor cambia de verdad.
+final todayProvider = Provider<DateTime>((ref) {
+  final now = ref.watch(clockProvider);
+  return DateTime(now.year, now.month, now.day);
+});
+
+/// Instante por el que arranca el día que se está ejecutando por el operador.
+///
+/// Es el que se guardó al activar la opción. Si se quedó en un día anterior se
+/// reancla a la misma hora de hoy: si no, al volver a abrir la app al día
+/// siguiente el programa entero aparecería como terminado.
+final runAnchorProvider = Provider<DateTime?>((ref) {
+  final anchor = ref.watch(activeDayProvider)?.forceRunAt;
+  if (anchor == null) return null;
+
+  final today = ref.watch(todayProvider);
+  if (!anchor.isBefore(today)) return anchor;
+  return DateTime(
+    today.year,
+    today.month,
+    today.day,
+    anchor.hour,
+    anchor.minute,
+  );
 });
 
 /// Cronograma del **día** que se está editando, con las horas de fin inferidas.
@@ -52,8 +91,16 @@ final dayScheduleProvider = Provider<List<ScheduledActivity>>((ref) {
   final day = ref.watch(activeDayProvider);
   if (day == null) return const [];
 
+  // Un día en marcha se lee desplazado: la primera actividad empieza en el
+  // instante en que el operador le dio al play y las siguientes caen donde
+  // toquen, respetando su duración y sus huecos.
+  final anchor = ref.watch(runAnchorProvider);
+  final activities = anchor == null
+      ? day.activities
+      : day.activitiesStartingAt(anchor);
+
   return resolveSchedule(
-    day.activities,
+    activities,
     lastDuration: AppConfig.defaultLastActivityDuration,
   );
 });
@@ -82,16 +129,38 @@ final activeScheduleProvider = Provider<List<ScheduledActivity>>((ref) {
   return ref.watch(dayScheduleProvider);
 });
 
-/// Estado de cada actividad (pasada / en curso / futura) en el instante actual.
+/// Estado de cada actividad (pasada / en curso / futura) en la lista.
 ///
-/// Se recalcula cada segundo porque depende del reloj, pero su valor solo
-/// cambia cuando algún estado cambia de verdad: las tarjetas observan una
-/// única entrada con `select`.
+/// Cuando el escenario tiene una actividad fija en pantalla, manda el
+/// escenario: el operador salta a mano —a la tercera aunque sea la primera la
+/// que «tocaría» por la hora— y el «en curso» de la lista tiene que moverse con
+/// él, o la lista y lo proyectado acabarían diciendo cosas distintas.
 ///
-/// Va sobre el cronograma **del día**: las tarjetas de la lista son las del
-/// programa, no el contador rápido.
+/// Con un contador suelto activo, en cambio, la lista del día sigue con sus
+/// horas: el contador no forma parte del programa.
+///
+/// Sin nada fijado se recurre al reloj, que es lo que se ve programando.
 final activityStatusProvider = Provider<Map<String, ActivityStatus>>((ref) {
-  final now = ref.watch(clockProvider);
   final schedule = ref.watch(dayScheduleProvider);
+  if (schedule.isEmpty) return const {};
+
+  final runIndex = ref.watch(
+    runShowProvider.select((run) => run.indexOverride),
+  );
+  final isDayRun = ref.watch(quickTimerProvider) == null;
+
+  if (runIndex != null && isDayRun) {
+    final current = runIndex.clamp(0, schedule.length - 1);
+    return {
+      for (var i = 0; i < schedule.length; i++)
+        schedule[i].item.id: i < current
+            ? ActivityStatus.past
+            : i == current
+            ? ActivityStatus.active
+            : ActivityStatus.upcoming,
+    };
+  }
+
+  final now = ref.watch(clockProvider);
   return {for (final slot in schedule) slot.item.id: slot.statusAt(now)};
 });

@@ -35,18 +35,33 @@ class _MarqueeBandState extends State<MarqueeBand>
       vsync: this,
       duration: widget.overlay.duration,
     );
-    _launch();
+    _launch(fromStart: true);
   }
 
   /// Un pase suelto se ejecuta una vez; uno marcado como bucle no para hasta
   /// que el operador lo corta.
-  void _launch() {
+  ///
+  /// [fromStart] distingue arrancar de cero de continuar: al cambiar la
+  /// velocidad en vivo hay que **reanudar** el texto donde está —no reiniciarlo
+  /// en el borde, que a un deslizador por segundo sería un parpadeo constante—
+  /// pero con la duración nueva, que es lo que manda la velocidad.
+  void _launch({required bool fromStart}) {
+    _controller.duration = widget.overlay.duration;
+
     if (widget.overlay.loop) {
-      _controller
-        ..reset()
-        ..repeat();
-    } else {
+      if (fromStart) {
+        _controller
+          ..reset()
+          ..repeat();
+      } else {
+        // `repeat()` sin argumentos usa la duración recién asignada; al no
+        // reiniciar el valor, el bucle sigue por donde iba.
+        _controller.repeat();
+      }
+    } else if (fromStart) {
       _controller.forward(from: 0);
+    } else {
+      _controller.forward();
     }
   }
 
@@ -57,10 +72,15 @@ class _MarqueeBandState extends State<MarqueeBand>
     // Un pase nuevo —otro mensaje, o el mismo reenviado— vuelve a empezar. Sin
     // esto, reenviar el texto dejaría la animación al final, ya fuera.
     if (oldWidget.overlay.runId != widget.overlay.runId) {
-      _controller.duration = widget.overlay.duration;
-      _launch();
-    } else if (oldWidget.overlay.duration != widget.overlay.duration) {
-      _controller.duration = widget.overlay.duration;
+      _launch(fromStart: true);
+      return;
+    }
+
+    // Mismo texto pero más rápido, más grande o con otro grosor: cambia la
+    // duración del cruce y hay que relanzar la animación para que el cambio se
+    // vea de inmediato. El estilo lo repinta solo, el recorrido no.
+    if (oldWidget.overlay.duration != widget.overlay.duration) {
+      _launch(fromStart: false);
     }
   }
 

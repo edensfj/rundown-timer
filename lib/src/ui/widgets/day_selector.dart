@@ -50,7 +50,7 @@ class DaySelector extends ConsumerWidget {
 }
 
 /// Acciones disponibles sobre un día.
-enum _DayAction { rename, delete }
+enum _DayAction { forceRun, rename, delete }
 
 /// Menú de un día: renombrar o eliminar.
 ///
@@ -79,15 +79,38 @@ Future<void> _dayMenu(
             Rect.fromPoints(position, position),
             Offset.zero & MediaQuery.sizeOf(context),
           ),
-          items: const [
-            PopupMenuItem(value: _DayAction.rename, child: _DayRenameItem()),
-            PopupMenuItem(value: _DayAction.delete, child: _DayDeleteItem()),
+          items: [
+            const PopupMenuItem(
+              value: _DayAction.forceRun,
+              child: _DayForceRunItem(),
+            ),
+            const PopupMenuItem(
+              value: _DayAction.rename,
+              child: _DayRenameItem(),
+            ),
+            const PopupMenuItem(
+              value: _DayAction.delete,
+              child: _DayDeleteItem(),
+            ),
           ],
         );
 
   if (action == null || !context.mounted) return;
 
   switch (action) {
+    case _DayAction.forceRun:
+      if (day.forceRun) {
+        await notifier.stopDayRun(day.id);
+        messenger.showSnackBar(
+          SnackBar(content: Text('«${day.name}» vuelve a su fecha.')),
+        );
+      } else {
+        await notifier.startDayRun(day.id);
+        messenger.showSnackBar(
+          SnackBar(content: Text('«${day.name}» empieza ahora mismo.')),
+        );
+      }
+
     case _DayAction.rename:
       final name = await promptForDayName(
         context,
@@ -154,9 +177,42 @@ class _DayActionList extends StatelessWidget {
           ),
         ),
         const Divider(height: 1),
+        _DayForceRunItem(day: day),
         const _DayRenameItem(),
         const _DayDeleteItem(),
       ],
+    );
+  }
+}
+
+/// Ejecutar (o dejar de ejecutar) el día de hoy, esté en el calendario cuando
+/// esté.
+///
+/// La opción cambia con la marca del día: marcada, el itinerario corre con sus
+/// horas de hoy aunque la fecha siga en el futuro.
+class _DayForceRunItem extends StatelessWidget {
+  const _DayForceRunItem({this.day});
+
+  /// En el menú contextual el día ya viene capturado, así que no hace falta
+  /// pasarlo otra vez.
+  final EventDay? day;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = day?.forceRun ?? false;
+
+    return ListTile(
+      leading: Icon(
+        active ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+        color: active ? Theme.of(context).colorScheme.error : null,
+      ),
+      title: Text(active ? 'Dejar de ejecutarlo ahora' : 'Empezar ahora'),
+      subtitle: Text(
+        active
+            ? 'Vuelve a su fecha de calendario.'
+            : 'La primera actividad empieza ya y el resto se calcula.',
+      ),
+      onTap: () => Navigator.of(context).pop(_DayAction.forceRun),
     );
   }
 }
@@ -249,12 +305,30 @@ class _DayChip extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  '${day.activities.length} '
-                  '${day.activities.length == 1 ? 'actividad' : 'actividades'}',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: countColor,
-                  ),
+                Row(
+                  children: [
+                    // Marca de «ejecutando hoy»: el día corre aunque su fecha no
+                    // sea la de hoy, y tiene que verse de un vistazo.
+                    if (day.forceRun) ...[
+                      Icon(
+                        Icons.play_circle_fill_rounded,
+                        size: 13,
+                        color: foreground,
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    Flexible(
+                      child: Text(
+                        '${day.activities.length} '
+                        '${day.activities.length == 1 ? 'actividad' : 'actividades'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: countColor,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

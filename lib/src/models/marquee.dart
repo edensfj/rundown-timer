@@ -26,10 +26,11 @@ enum MarqueeDirection {
 class MarqueeSettings {
   const MarqueeSettings({
     this.speed = 0.25,
-    this.fontScale = 0.8,
-    this.fontWeight = 700,
+    this.fontScale = 0.9,
+    this.fontWeight = 900,
     this.direction = MarqueeDirection.rightToLeft,
     this.prominent = true,
+    this.showTimer = true,
   });
 
   /// Velocidad, medida en **alturas de pantalla por segundo**. Expresarla así
@@ -51,6 +52,10 @@ class MarqueeSettings {
   /// bajo el reloj, sin quitarle sitio.
   final bool prominent;
 
+  /// `true` si el reloj (cuenta atrás o hora) sigue viéndose encima del texto.
+  /// `false` deja **solo el texto**, a pantalla completa.
+  final bool showTimer;
+
   /// El grosor como valor de Flutter (`w100`…`w900`).
   FontWeight get weight {
     final index = (fontWeight ~/ 100 - 1).clamp(
@@ -68,11 +73,18 @@ class MarqueeSettings {
           other.fontScale == fontScale &&
           other.fontWeight == fontWeight &&
           other.direction == direction &&
-          other.prominent == prominent;
+          other.prominent == prominent &&
+          other.showTimer == showTimer;
 
   @override
-  int get hashCode =>
-      Object.hash(speed, fontScale, fontWeight, direction, prominent);
+  int get hashCode => Object.hash(
+    speed,
+    fontScale,
+    fontWeight,
+    direction,
+    prominent,
+    showTimer,
+  );
 
   MarqueeSettings copyWith({
     double? speed,
@@ -80,6 +92,7 @@ class MarqueeSettings {
     int? fontWeight,
     MarqueeDirection? direction,
     bool? prominent,
+    bool? showTimer,
   }) {
     return MarqueeSettings(
       speed: speed ?? this.speed,
@@ -87,6 +100,7 @@ class MarqueeSettings {
       fontWeight: fontWeight ?? this.fontWeight,
       direction: direction ?? this.direction,
       prominent: prominent ?? this.prominent,
+      showTimer: showTimer ?? this.showTimer,
     );
   }
 
@@ -96,15 +110,17 @@ class MarqueeSettings {
     'fontWeight': fontWeight,
     'direction': direction.name,
     'prominent': prominent,
+    'showTimer': showTimer,
   };
 
   factory MarqueeSettings.fromJson(Map<dynamic, dynamic> json) {
     return MarqueeSettings(
       speed: _asDouble(json['speed']) ?? 0.25,
-      fontScale: _asDouble(json['fontScale']) ?? 0.8,
-      fontWeight: _asInt(json['fontWeight']) ?? 700,
+      fontScale: _asDouble(json['fontScale']) ?? 0.9,
+      fontWeight: _asInt(json['fontWeight']) ?? 900,
       direction: _readDirection(json['direction']),
       prominent: json['prominent'] as bool? ?? true,
+      showTimer: json['showTimer'] as bool? ?? true,
     );
   }
 
@@ -190,6 +206,10 @@ class MarqueeOverlay {
   final String messageId;
 
   final String text;
+
+  /// Ajustes con los que se está pintando **ahora mismo**, no los del momento
+  /// del envío: si el operador toca un deslizador con el texto al aire, el panel
+  /// los actualiza aquí y el escenario los aplica en el acto.
   final MarqueeSettings settings;
 
   /// Cuánto tarda el texto en cruzar entero. Lo calcula el panel y lo obedece
@@ -198,6 +218,36 @@ class MarqueeOverlay {
 
   /// `true` si el pase se repite sin parar y solo lo corta el operador.
   final bool loop;
+
+  /// Cambia los ajustes del pase sin cambiar de pase: es el mismo mensaje
+  /// cruzando la pantalla, con otra velocidad, otro tamaño u otro grosor.
+  MarqueeOverlay copyWith({MarqueeSettings? settings, Duration? duration}) =>
+      MarqueeOverlay(
+        runId: runId,
+        messageId: messageId,
+        text: text,
+        settings: settings ?? this.settings,
+        duration: duration ?? this.duration,
+        loop: loop,
+      );
+
+  /// Compara el pase entero, ajustes y duración incluidos. Si solo se mirara el
+  /// `runId`, un cambio de ajustes no parecería un cambio y el escenario —que
+  /// recibe la instantánea— no se enteraría de que hay algo nuevo que pintar.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MarqueeOverlay &&
+          other.runId == runId &&
+          other.messageId == messageId &&
+          other.text == text &&
+          other.settings == settings &&
+          other.duration == duration &&
+          other.loop == loop;
+
+  @override
+  int get hashCode =>
+      Object.hash(runId, messageId, text, settings, duration, loop);
 
   Map<String, dynamic> toJson() => {
     'runId': runId,
@@ -228,6 +278,16 @@ class MarqueeOverlay {
 /// Oswald. Sirve para estimar el ancho del texto sin medirlo con el motor.
 const double _averageGlyphRatio = 0.42;
 
+/// Fracción del alto de pantalla que ocupa la banda de la marquesina según los
+/// ajustes: pantalla completa si solo se muestra el texto, casi media si es el
+/// protagonista, o una franja fina si va bajo el reloj.
+double marqueeBandFractionFor(MarqueeSettings settings) {
+  if (!settings.showTimer) return 1;
+  return settings.prominent
+      ? AppConfig.marqueeProminentBandFraction
+      : AppConfig.marqueeBandFraction;
+}
+
 /// Cuánto tarda [text] en cruzar la pantalla con [settings].
 ///
 /// Todo se mide en **alturas de pantalla**, de modo que el resultado no depende
@@ -238,10 +298,8 @@ Duration marqueeTravelTime(String text, MarqueeSettings settings) {
   final characters = text.trim().isEmpty ? 1 : text.trim().runes.length;
 
   // El texto vive dentro de la banda, así que su alto real es el de la banda
-  // —que depende de si el texto es protagonista o no— por lo que ocupa dentro.
-  final band = settings.prominent
-      ? AppConfig.marqueeProminentBandFraction
-      : AppConfig.marqueeBandFraction;
+  // —que depende del modo elegido— por lo que ocupa dentro de ella.
+  final band = marqueeBandFractionFor(settings);
   final letterHeights = band * settings.fontScale * characters;
   final textWidth = letterHeights * _averageGlyphRatio;
   final travel = nominalAspectRatio + textWidth;

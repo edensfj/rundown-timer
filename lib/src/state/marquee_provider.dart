@@ -74,8 +74,16 @@ final marqueeMessagesProvider =
 /// detiene solo. Se mide aquí y no en el escenario porque el escenario no
 /// conoce la pantalla del otro lado: es el panel el que decide cuándo se acaba
 /// y manda una instantánea sin mensaje, con lo que el reloj recupera su tamaño.
+///
+/// Los ajustes se aplican **en vivo**: si el operador mueve un deslizador con un
+/// texto ya cruzando, este cambia aquí mismo, sin tener que reenviarlo. Para eso
+/// el pase guarda los ajustes que se están usando —no los del envío— y el
+/// escenario los va reverdando en cada instantánea.
 class MarqueePlaybackNotifier extends Notifier<MarqueeOverlay?> {
   Timer? _timer;
+
+  /// Cuándo arrancó el pase en curso, para poder recalcular cuánto le queda.
+  DateTime? _startedAt;
 
   @override
   MarqueeOverlay? build() {
@@ -83,6 +91,11 @@ class MarqueePlaybackNotifier extends Notifier<MarqueeOverlay?> {
       _timer?.cancel();
       _timer = null;
     });
+
+    ref.listen(
+      marqueeSettingsProvider,
+      (previous, next) => _applySettings(next),
+    );
     return null;
   }
 
@@ -107,6 +120,7 @@ class MarqueePlaybackNotifier extends Notifier<MarqueeOverlay?> {
   void _start(MarqueeMessage message, MarqueeSettings settings) {
     _timer?.cancel();
     _timer = null;
+    _startedAt = DateTime.now();
 
     final duration = marqueeTravelTime(message.text, settings);
     state = MarqueeOverlay(
@@ -124,13 +138,53 @@ class MarqueePlaybackNotifier extends Notifier<MarqueeOverlay?> {
     _timer = Timer(duration, () {
       if (!ref.mounted) return;
       state = null;
+      _startedAt = null;
     });
+  }
+
+  /// Manda los ajustes nuevos al pase que está al aire.
+  ///
+  /// El texto **no** se reinicia —el operador está moviendo un deslizador y un
+  /// salto a pantalla completa cada vez que lo mueve sería insoportable—, solo
+  /// se recalcula lo que tarda en cruzar y se reprograma el final del pase
+  /// sobre el recorrido que le queda. Así acelerar el texto no lo corta por la
+  /// mitad y frenarlo no le alarga la vida.
+  void _applySettings(MarqueeSettings settings) {
+    final overlay = state;
+    if (overlay == null) return;
+
+    final duration = marqueeTravelTime(overlay.text, settings);
+    if (overlay.settings == settings && overlay.duration == duration) return;
+
+    state = overlay.copyWith(settings: settings, duration: duration);
+
+    // En bucle no hay final que programar: sigue hasta que lo paren.
+    if (overlay.loop) return;
+
+    _timer?.cancel();
+    _timer = null;
+
+    final total = overlay.duration.inMicroseconds;
+    final elapsed = _startedAt == null
+        ? 0
+        : DateTime.now().difference(_startedAt!).inMicroseconds;
+    final pending = total <= 0 ? 0.0 : (1 - elapsed / total).clamp(0.0, 1.0);
+
+    _timer = Timer(
+      Duration(milliseconds: (duration.inMilliseconds * pending).round()),
+      () {
+        if (!ref.mounted) return;
+        state = null;
+        _startedAt = null;
+      },
+    );
   }
 
   /// Quita el mensaje de la pantalla y deja el reloj como estaba.
   void stop() {
     _timer?.cancel();
     _timer = null;
+    _startedAt = null;
     if (state != null) state = null;
   }
 }

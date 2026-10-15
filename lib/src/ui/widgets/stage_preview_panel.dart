@@ -281,7 +281,7 @@ class _PreviewDetails extends ConsumerWidget {
                 TextButton.icon(
                   onPressed: () {
                     ref.read(quickTimerProvider.notifier).clear();
-                    ref.read(runShowProvider.notifier).followClock();
+                    ref.read(runShowProvider.notifier).syncWithClock();
                   },
                   icon: const Icon(Icons.event_note_rounded, size: 16),
                   label: const Text('Al itinerario'),

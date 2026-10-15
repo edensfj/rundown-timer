@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/app_config.dart';
 import '../../models/marquee.dart';
 import '../../state/marquee_provider.dart';
 import 'marquee_band.dart';
@@ -203,31 +202,46 @@ class _MarqueeDialogState extends ConsumerState<MarqueeDialog> {
   }
 }
 
-/// Franja de ejemplo: enseña cómo queda el texto con los ajustes actuales.
+/// Recuadro de ejemplo: enseña cómo queda el texto con los ajustes actuales.
 ///
 /// No es el escenario —eso lo manda el chat—, solo una muestra viva para ajustar
 /// velocidad, tamaño, grosor y sentido sin tener que proyectar nada.
+///
+/// El recuadro **nunca cambia de tamaño**: cambia el modo (solo texto,
+/// protagonista o bajo el reloj), el alto de la banda y con ella la letra, pero
+/// la caja se queda igual. Si el recuadro creciera o se encogiera, el campo de
+/// mensaje y los deslizadores de abajo se moverían mientras el operador los está
+/// usando.
 class _PreviewStrip extends ConsumerWidget {
   const _PreviewStrip();
+
+  /// Alto fijo del recuadro, el mismo con cualquier ajuste.
+  static const double _boxHeight = 200;
+
+  /// Margen interior, para que la banda no se pegue al borde.
+  static const double _inset = 10;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(marqueeSettingsProvider);
     const sample = 'MENSAJE DE EJEMPLO · ASÍ SE VERÁ';
 
-    // La franja de ejemplo imita el alto que tendrá en el escenario: grande si
-    // el texto es protagonista, fina si va bajo el reloj.
-    final height = settings.prominent
-        ? AppConfig.marqueeProminentBandFraction * 360
-        : AppConfig.marqueeBandFraction * 360;
+    // Dentro del recuadro, la banda sí imita la proporción que tendrá en el
+    // escenario. Lo único que cambia al mover un ajuste es el texto.
+    final inner = _boxHeight - _inset * 2;
+    final bandHeight = marqueeBandFractionFor(settings) * inner;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
-      child: SizedBox(
-        height: height,
+      child: Container(
+        height: _boxHeight,
         width: double.infinity,
-        child: ColoredBox(
-          color: Colors.black,
+        color: Colors.black,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(vertical: _inset),
+        child: SizedBox(
+          height: bandHeight,
+          width: double.infinity,
           child: MarqueeBand(
             // Un id fijo: la muestra no se reinicia en cada ajuste; el estilo y
             // la velocidad se actualizan en vivo.
@@ -239,7 +253,7 @@ class _PreviewStrip extends ConsumerWidget {
               duration: marqueeTravelTime(sample, settings),
               loop: true,
             ),
-            fontSize: height * settings.fontScale,
+            fontSize: bandHeight * settings.fontScale,
           ),
         ),
       ),
@@ -259,22 +273,31 @@ class _SettingsSliders extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CheckboxListTile(
+        SwitchListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          controlAffinity: ListTileControlAffinity.leading,
-          value: settings.prominent,
-          onChanged: (v) {
-            if (v == null) return;
-            notifier.set(settings.copyWith(prominent: v));
-          },
-          title: const Text('El texto es el protagonista'),
+          value: settings.showTimer,
+          onChanged: (v) => notifier.set(settings.copyWith(showTimer: v)),
+          title: const Text('Mostrar el reloj'),
           subtitle: Text(
-            settings.prominent
-                ? 'El reloj se encoge arriba y el texto se ve grande.'
-                : 'El texto pasa por una franja fina bajo el reloj.',
+            settings.showTimer
+                ? 'El texto sale junto a la cuenta atrás o la hora.'
+                : 'Sale solo el texto, a pantalla completa.',
           ),
         ),
+        if (settings.showTimer)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: settings.prominent,
+            onChanged: (v) => notifier.set(settings.copyWith(prominent: v)),
+            title: const Text('El texto es el protagonista'),
+            subtitle: Text(
+              settings.prominent
+                  ? 'El reloj se encoge arriba y el texto se ve grande.'
+                  : 'El texto pasa por una franja fina bajo el reloj.',
+            ),
+          ),
         const SizedBox(height: 4),
         _SliderRow(
           label: 'Velocidad',

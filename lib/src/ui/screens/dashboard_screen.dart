@@ -17,6 +17,7 @@ import '../widgets/day_selector.dart';
 import '../widgets/live_clock_header.dart';
 import '../widgets/marquee_dialog.dart';
 import '../widgets/quick_timer_dialog.dart';
+import '../widgets/rundown_transfer_button.dart';
 import '../widgets/screen_picker_dialog.dart';
 import '../widgets/stage_preview_panel.dart';
 import '../widgets/templates_dialog.dart';
@@ -61,6 +62,7 @@ class DashboardScreen extends ConsumerWidget {
             tooltip: 'Marquesina (mensajes en pantalla)',
             icon: const Icon(Icons.campaign_rounded),
           ),
+          const RundownTransferButton(),
           IconButton(
             onPressed: () => _addQuickTimer(context, ref),
             tooltip: 'Contador rápido (fuera del itinerario)',
@@ -278,6 +280,11 @@ class DashboardScreen extends ConsumerWidget {
     final notifier = ref.read(rundownProvider.notifier);
     final messenger = ScaffoldMessenger.of(context);
 
+    // El «deshacer» guarda la actividad otra vez: si el día se está ejecutando
+    // hoy, lo que llega de la lista lleva las fechas de hoy y hay que volver a
+    // las suyas antes de escribirlo.
+    final stored = day.storedActivity(item);
+
     await notifier.deleteActivity(day.id, item.id);
 
     messenger.showSnackBar(
@@ -285,7 +292,7 @@ class DashboardScreen extends ConsumerWidget {
         content: Text('«${item.title}» eliminada'),
         action: SnackBarAction(
           label: 'Deshacer',
-          onPressed: () => notifier.saveActivity(dayId: day.id, item: item),
+          onPressed: () => notifier.saveActivity(dayId: day.id, item: stored),
         ),
       ),
     );

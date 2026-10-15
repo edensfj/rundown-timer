@@ -27,6 +27,25 @@ class RundownNotifier extends AsyncNotifier<List<EventDay>> {
     ref.read(selectedDayProvider.notifier).select(day.id);
   }
 
+  /// Reemplaza o amplía la programación con los días importados de un archivo.
+  ///
+  /// Con [replace] se queda solo lo importado; sin él, los días importados se
+  /// **añaden** a los que ya hay y, si traen un id que ya existía, lo sustituyen.
+  /// Es lo menos destructivo por defecto: importar no borra nada sin pedirlo.
+  Future<void> importDays(List<EventDay> days, {bool replace = false}) async {
+    final byId = <String, EventDay>{
+      if (!replace)
+        for (final day in _days) day.id: day,
+      for (final day in days) day.id: day,
+    };
+    final next = byId.values.toList()..sort((a, b) => a.date.compareTo(b.date));
+
+    await _commit(next);
+    if (next.isNotEmpty) {
+      ref.read(selectedDayProvider.notifier).select(next.first.id);
+    }
+  }
+
   /// Devuelve el día seleccionado, y si no hay ninguno crea el de hoy.
   ///
   /// Lo usa el botón de agregar actividad cuando todavía no hay itinerario:
@@ -55,6 +74,35 @@ class RundownNotifier extends AsyncNotifier<List<EventDay>> {
   Future<void> renameDay(String dayId, String name) async {
     await _commit(
       _days.map((d) => d.id == dayId ? d.copyWith(name: name) : d).toList(),
+    );
+  }
+
+  /// Empieza a ejecutar [dayId] **ahora**: la primera actividad arranca en este
+  /// instante y el resto del guion se calcula a partir de ahí.
+  ///
+  /// El instante queda guardado ([EventDay.forceRunAt]) para que el programa siga
+  /// avanzando mientras se mira, en vez de quedarse clavado en la primera
+  /// actividad. El día también queda seleccionado: si no, el operador arrancaría
+  /// un día y seguiría viendo correr el otro.
+  Future<void> startDayRun(String dayId, {DateTime? at}) async {
+    await _commit(
+      _days
+          .map(
+            (d) => d.id == dayId
+                ? d.copyWith(forceRunAt: at ?? DateTime.now())
+                : d,
+          )
+          .toList(),
+    );
+    ref.read(selectedDayProvider.notifier).select(dayId);
+  }
+
+  /// Devuelve el día a su fecha de calendario y deja de estar en marcha.
+  Future<void> stopDayRun(String dayId) async {
+    await _commit(
+      _days
+          .map((d) => d.id == dayId ? d.copyWith(clearForceRun: true) : d)
+          .toList(),
     );
   }
 

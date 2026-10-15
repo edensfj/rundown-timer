@@ -35,6 +35,9 @@ dependencies:
   # Detección de pantallas conectadas (proyectores, monitores)
   screen_retriever: ^0.2.2
 
+  # Importar / exportar la programación como archivo JSON
+  file_selector: ^1.0.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,0 +1,191 @@
+{
+  "app": "rundown-timer",
+  "version": 1,
+  "days": [
+    {
+      "id": "sample-sabado",
+      "name": "Sábado 17",
+      "date": "2026-10-17T00:00:00.000",
+      "activities": [
+        {
+          "id": "sat-01",
+          "title": "LLEGADA BIENVENIDA, REGISTRO, PAGOS, HOJA DE VIDA DIGITAL, ESCARAPELA",
+          "startTime": "2026-10-17T19:30:00.000",
+          "endTime": "2026-10-17T20:00:00.000",
+          "description": null,
+          "responsible": "Felipe y Juan Felipe",
+          "location": "Auditorio MCI zona al frente administración"
+        },
+        {
+          "id": "sat-02",
+          "title": "ACOMODACIÓN SILLAS / BIOMBOS",
+          "startTime": "2026-10-17T19:50:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "Servicio externo",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "sat-03",
+          "title": "BIENVENIDA, PRESENTACIÓN DE ASISTENTES, 2 PREGUNTAS, GUÍAS Y SERVIDORES",
+          "startTime": "2026-10-17T20:00:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "César Rojas",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "sat-04",
+          "title": "LA IMPORTANCIA DE TENER UN ENCUENTRO",
+          "startTime": "2026-10-17T20:20:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "Pastor Octavio",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "sat-05",
+          "title": "REFRIGERIO / MILO CON EMPANADA",
+          "startTime": "2026-10-17T21:20:00.000",
+          "endTime": "2026-10-17T21:30:00.000",
+          "description": null,
+          "responsible": "Equipo de servicio",
+          "location": "Auditorio MCI zona al frente administración"
+        }
+      ]
+    },
+    {
+      "id": "sample-domingo",
+      "name": "Domingo 18",
+      "date": "2026-10-18T00:00:00.000",
+      "activities": [
+        {
+          "id": "dom-01",
+          "title": "LLEGADA BIENVENIDA, REGISTRO, PAGOS, HOJA DE VIDA DIGITAL, ESCARAPELA",
+          "startTime": "2026-10-18T06:30:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "Felipe y Juan Felipe",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "dom-03",
+          "title": "LA REVELACIÓN DE LA CRUZ + Video Clips «La Pasión de Cristo»",
+          "startTime": "2026-10-18T07:15:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "Andrés Fernández",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "dom-04",
+          "title": "REUNIÓN DOMINICAL",
+          "startTime": "2026-10-18T09:00:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "Pastor Octavio",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "dom-05",
+          "title": "REFRIGERIO / JUGO CON SÁNDWICH EN EL AUDITORIO · ACOMODACIÓN SILLAS / BIOMBOS · MESAS, MANTELES, SOBREMANTELES",
+          "startTime": "2026-10-18T10:45:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "Equipo de servicio y servicio externo",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "dom-06",
+          "title": "SANANDO EL CORAZÓN · PERDÓN",
+          "startTime": "2026-10-18T11:00:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "Andrés Fernández",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "dom-07",
+          "title": "GRACIAS DIOS POR TU PERDÓN / ARREPENTIMIENTO · CLÍNICA ESPIRITUAL · VIDEO",
+          "startTime": "2026-10-18T12:15:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "César Rojas",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "dom-08",
+          "title": "FOTO / ALMUERZO + DESCANSO",
+          "startTime": "2026-10-18T13:30:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "Equipo de servicio y media",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "dom-09",
+          "title": "SEMBRANDO LO MEJOR · FAMILIA",
+          "startTime": "2026-10-18T14:30:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "Felipe Escobar",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "dom-10",
+          "title": "VENCIENDO AL ADVERSARIO · LIBERACIÓN",
+          "startTime": "2026-10-18T15:15:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "Pastor Octavio",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "dom-11",
+          "title": "INTEGRACIÓN POR GRUPOS",
+          "startTime": "2026-10-18T16:45:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "César Rojas y guías",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "dom-12",
+          "title": "EL ESPÍRITU SANTO",
+          "startTime": "2026-10-18T17:30:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "Pastor Octavio",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "dom-13",
+          "title": "CORRESPONDENCIA · SE ESTARÁ RECIBIENDO DE 11:00 AM HASTA 1:00 PM",
+          "startTime": "2026-10-18T18:45:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "Guías",
+          "location": "2DO PISO Auditorio MCI"
+        },
+        {
+          "id": "dom-14",
+          "title": "FIESTA DE BIENVENIDA",
+          "startTime": "2026-10-18T19:20:00.000",
+          "endTime": "2026-10-18T20:30:00.000",
+          "description": null,
+          "responsible": "César Rojas y Andrés Fernández",
+          "location": "Auditorio MCI"
+        },
+        {
+          "id": "dom-02",
+          "title": "REFRIGERIO / TINTO CON BUÑUELO · INGRESO BIENVENIDA, PRESENTACIÓN FALTE",
+          "startTime": "2026-10-18T07:00:00.000",
+          "endTime": null,
+          "description": null,
+          "responsible": "César Rojas y Equipo de servicio",
+          "location": "Auditorio MCI"
+        }
+      ]
+    }
+  ]
+}

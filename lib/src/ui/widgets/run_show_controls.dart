@@ -103,9 +103,12 @@ class RunShowControls extends StatelessWidget {
             icon: snapshot.isAutomatic
                 ? Icons.auto_mode_rounded
                 : Icons.lock_clock_outlined,
+            // El programa no salta solo de actividad en actividad: este botón no
+            // reactiva nada automático, solo recoloca la pantalla en la
+            // actividad que le tocaría a esta hora.
             tooltip: snapshot.isAutomatic
-                ? 'Siguiendo el reloj'
-                : 'Volver al modo automático',
+                ? 'El evento aún no ha empezado'
+                : 'Ir a la actividad de esta hora',
             onPressed: onToggleAutomatic,
             highlighted: !snapshot.isAutomatic,
           ),

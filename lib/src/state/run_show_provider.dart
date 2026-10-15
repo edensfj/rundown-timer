@@ -10,11 +10,38 @@ import 'schedule_provider.dart';
 /// Depende de `stageSourceIdProvider`: al cambiar de fuente (de día o entre
 /// itinerario y contador) el notifier se reconstruye y el estado vuelve a cero,
 /// así que nunca queda apuntando a un índice que ya no existe.
+///
+/// El programa **no avanza solo**: cuando llega la hora de la primera actividad
+/// se fija el índice y de ahí en adelante la pantalla se queda en esa actividad
+/// —pase lo que pase, aunque se retrase— hasta que el operador pulse «siguiente».
+/// Un rundown se lleva con la sala, no con el reloj, y en directo el reloj va
+/// siempre por detrás. Lo único que arranca solo es el evento: antes de que
+/// llegue, el escenario muestra la cuenta atrás previa.
 class RunShowNotifier extends Notifier<RunShowState> {
   @override
   RunShowState build() {
     final source = ref.watch(stageSourceIdProvider);
+
+    ref.listen(clockProvider, (previous, next) => _fijarAlEmpezar(next));
+
     return RunShowState(sourceId: source);
+  }
+
+  /// Fija la actividad en la que arranca el evento, una sola vez.
+  ///
+  /// Mientras el reloj no haya llegado a la primera actividad se sigue a la
+  /// espera (cuenta atrás previa). En cuanto llega, el índice se clava y deja de
+  /// seguir al reloj.
+  void _fijarAlEmpezar(DateTime now) {
+    if (state.indexOverride != null) return;
+
+    final schedule = ref.read(activeScheduleProvider);
+    if (schedule.isEmpty) return;
+
+    final index = resolveRunIndex(schedule, state.effectiveNow(now));
+    if (index < 0) return;
+
+    state = state.copyWith(indexOverride: index);
   }
 
   List<ScheduledActivity> get _schedule => ref.read(activeScheduleProvider);
@@ -45,8 +72,12 @@ class RunShowNotifier extends Notifier<RunShowState> {
     );
   }
 
-  /// Devuelve el control al reloj: el índice vuelve a seguir la hora real.
-  void followClock() => state = state.copyWith(indexOverride: null);
+  /// Vuelve a la actividad que marca la hora de ahora.
+  ///
+  /// No reactiva el avance automático —eso no existe—: solo recoloca la pantalla
+  /// en la actividad que correspondería a este momento, por ejemplo después de
+  /// haber ido saltando a mano o al abrir la app con el evento ya empezado.
+  void syncWithClock() => state = state.copyWith(indexOverride: null);
 
   void togglePause() {
     if (state.isPaused) {
@@ -87,7 +118,10 @@ class RunShowNotifier extends Notifier<RunShowState> {
     state = state.copyWith(offset: state.offset + delta);
   }
 
-  /// Índice efectivo: el manual si lo hay, si no el que deduce el reloj.
+  /// Índice efectivo: el fijado si lo hay, si no el que deduce el reloj.
+  ///
+  /// Sin índice fijado solo se está esperando a que empiece el evento; en cuanto
+  /// llega, [clockProvider] lo clava y este caso deja de darse.
   int _currentIndex() {
     final schedule = _schedule;
     if (schedule.isEmpty) return 0;
@@ -100,5 +134,6 @@ class RunShowNotifier extends Notifier<RunShowState> {
   }
 }
 
-final runShowProvider =
-    NotifierProvider<RunShowNotifier, RunShowState>(RunShowNotifier.new);
+final runShowProvider = NotifierProvider<RunShowNotifier, RunShowState>(
+  RunShowNotifier.new,
+);
