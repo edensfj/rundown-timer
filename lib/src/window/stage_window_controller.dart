@@ -66,6 +66,20 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
   /// devolvérsela al salir. Solo se usa en el modo de una sola ventana.
   Rect? _boundsBeforeStage;
 
+  /// Pantalla en la que se instaló el escenario, por [displayKeyOf].
+  ///
+  /// Es lo que permite enterarse de que esa pantalla ha desaparecido: al
+  /// desenchufar la TV, el sistema deja la ventana **a pantalla completa sobre la
+  /// pantalla del operador**, tapando el panel entero.
+  String? _stageDisplayKey;
+
+  /// Si el escenario llegó a ocupar una pantalla entera.
+  bool _stageFullscreen = false;
+
+  /// Si fue la app quien bajó el escenario a ventana normal al perder la pantalla,
+  /// para devolvérsela si esa pantalla vuelve.
+  bool _degradedToWindow = false;
+
   /// Envíos seguidos que han fallado; ver [push].
   int _pushFailures = 0;
 
@@ -75,6 +89,14 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     // mostrar se le manda. Va aquí y no en la UI para que no se pueda olvidar
     // en algún camino.
     ref.listen(countdownProvider, (_, next) => push(next));
+
+    // Mientras el escenario esté proyectando, el reparto de pantallas manda: si
+    // la pantalla de la TV se va, su ventana tiene que volver a ser una ventana
+    // normal en vez de quedarse a pantalla completa sobre el panel.
+    ref.listen(
+      displaysProvider,
+      (_, next) => unawaited(_onDisplaysChanged(next.value)),
+    );
 
     // El aspa de la ventana del escenario la cierra sin pasar por nosotros. El
     // plugin avisa de ello (en Windows, al destruirse su motor, `RemoveWindow`
@@ -119,7 +141,15 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     if (sigueAbierta) return;
 
     _controller = null;
+    _reset();
+  }
+
+  /// Deja el estado en «cerrado» y olvida dónde se había proyectado.
+  void _reset() {
     _pushFailures = 0;
+    _stageDisplayKey = null;
+    _stageFullscreen = false;
+    _degradedToWindow = false;
     state = const StageWindowStatus();
   }
 
@@ -134,7 +164,11 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     final segundaVentana = ref.read(stageSecondWindowProvider);
 
     try {
-      final (frame, fullscreen) = await _stageFrame();
+      final (frame, fullscreen, displayKey) = await _stageFrame();
+      _stageDisplayKey = displayKey;
+      _stageFullscreen = fullscreen;
+      _degradedToWindow = false;
+
       final args = StageWindowArgs(
         x: frame.left,
         y: frame.top,
@@ -162,28 +196,131 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     }
   }
 
-  /// Dónde tiene que salir el escenario, y si eso es una pantalla completa.
-  Future<(Rect, bool)> _stageFrame() async {
-    final displays = await ref.read(displaysProvider.future);
+  /// Dónde tiene que salir el escenario, si eso es una pantalla completa y en qué
+  /// pantalla se instala.
+  ///
+  /// La pantalla se devuelve porque sin ella no hay forma de enterarse luego de
+  /// que esa pantalla ha desaparecido.
+  Future<(Rect, bool, String?)> _stageFrame() async {
+    // Se pregunta al sistema en el momento de abrir, no se usa la lista cacheada:
+    // si la TV se desconectó hace un segundo, con la lista vieja el escenario
+    // salía a pantalla completa sobre la pantalla principal.
+    final displays = await readDisplaysNow(ref);
     final panel = await _panelBounds();
 
     final target = chooseStageDisplay(
       displays: displays,
-      selectedId: ref.read(selectedDisplayProvider),
+      selectedKey: ref.read(selectedDisplayProvider),
       panelBounds: panel,
     );
 
-    if (target != null) return (visibleRectOf(target), true);
+    if (target != null) {
+      return (visibleRectOf(target), true, displayKeyOf(target));
+    }
 
     // Sin pantalla elegida: se centra un lienzo de proyector en la pantalla
     // donde está el panel, para poder ver las dos cosas.
-    return (
-      _centeredOn(
-        displayContaining(displays, panel) ?? displays.firstOrNull,
-        AppConfig.stageWindowSize,
-      ),
-      false,
+    return (await _windowedFrame(displays), false, null);
+  }
+
+  /// Una ventana normal de escenario, centrada en la pantalla del panel.
+  ///
+  /// Es lo que se usa cuando no hay una segunda pantalla donde proyectar, y
+  /// también lo que se le pasa al escenario cuando la suya se desconecta: sin
+  /// pantalla de la TV, lo único razonable es una ventana sobre la del operador.
+  Future<Rect> _windowedFrame(List<Display> displays) async {
+    return _centeredOn(
+      displayContaining(displays, await _panelBounds()) ?? displays.firstOrNull,
+      AppConfig.stageWindowSize,
     );
+  }
+
+  /// Reacciona a que el reparto de pantallas cambie con el escenario ya abierto.
+  ///
+  /// El caso que motiva esto: el escenario está a pantalla completa en la TV, el
+  /// operador desenchufa el cable y **el sistema deja la ventana a pantalla
+  /// completa sobre la pantalla del operador**. El reloj tapa el panel entero y
+  /// no hay forma de seguir programando, así que hay que devolverla a una
+  /// ventana normal; y si la pantalla vuelve, devolvérsela sin que el operador
+  /// tenga que reabrir el modo escenario en mitad del evento.
+  Future<void> _onDisplaysChanged(List<Display>? displays) async {
+    if (displays == null || !state.isOpen) return;
+
+    switch (stageScreenChangeFor(
+      displays: displays,
+      stageDisplayKey: _stageDisplayKey,
+      wasFullScreen: _stageFullscreen,
+      degradedByUs: _degradedToWindow,
+    )) {
+      case StageScreenChange.none:
+        return;
+
+      case StageScreenChange.toWindow:
+        _stageFullscreen = false;
+        _degradedToWindow = true;
+
+        // En Linux, si no se pudo lanzar la segunda instancia, el escenario se
+        // proyecta en la ventana del propio panel: la que hay que devolver a su
+        // sitio es esa.
+        if (state.isEmbedded) {
+          await _restorePanelBounds();
+          return;
+        }
+
+        await _sendStageWindow(
+          frame: await _windowedFrame(displays),
+          fullscreen: false,
+        );
+        ref.read(stageNoticeProvider.notifier).show(
+              'Se ha desconectado la pantalla del escenario: '
+              'el reloj vuelve a una ventana normal.',
+            );
+
+      case StageScreenChange.toScreen:
+        final display = displayByKey(displays, _stageDisplayKey);
+        // La decisión anterior ya ha comprobado que está; si aun así no aparece,
+        // no se mueve nada: es una carrera contra el sistema.
+        if (display == null) return;
+
+        _stageFullscreen = true;
+        _degradedToWindow = false;
+        await _sendStageWindow(frame: visibleRectOf(display), fullscreen: true);
+        ref.read(stageNoticeProvider.notifier).show(
+              'La pantalla del escenario ha vuelto.',
+            );
+    }
+  }
+
+  /// Le dice al escenario que cambie su ventana.
+  ///
+  /// La orden viaja por el mismo canal que el reloj: el plugin en Windows y
+  /// macOS, la entrada estándar en Linux. La coloca quien tiene su ventana: el
+  /// escenario es otra ventana —u otro proceso— y no se puede mover desde fuera.
+  Future<void> _sendStageWindow({
+    required Rect frame,
+    required bool fullscreen,
+  }) async {
+    final command = StageWindowCommand(frame: frame, fullscreen: fullscreen);
+
+    final process = _process;
+    if (process != null) {
+      try {
+        process.stdin.writeln(command.encode());
+        await process.stdin.flush();
+      } catch (_) {
+        // El proceso ya no está; [Process.exitCode] se encarga del estado.
+      }
+      return;
+    }
+
+    final controller = _controller;
+    if (controller == null) return;
+
+    try {
+      await controller.invokeMethod(stageWindowCommand, command.toJson());
+    } catch (_) {
+      // Si el motor del escenario ya no está, no hay a quién moverle la ventana.
+    }
   }
 
   /// Abre el escenario en una **segunda ventana del mismo proceso**.
@@ -242,8 +379,7 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     if (_process != process) return;
 
     _process = null;
-    _pushFailures = 0;
-    state = const StageWindowStatus();
+    _reset();
   }
 
   /// Proyecta el escenario **dentro de la ventana del panel**.
@@ -256,17 +392,25 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
     _boundsBeforeStage = await _panelBounds();
 
     Rect? target;
+    String? displayKey;
     try {
       final displays = await ref.read(displaysProvider.future);
       final chosen = chooseStageDisplay(
         displays: displays,
-        selectedId: ref.read(selectedDisplayProvider),
+        selectedKey: ref.read(selectedDisplayProvider),
         panelBounds: _boundsBeforeStage,
       );
-      if (chosen != null) target = visibleRectOf(chosen);
+      if (chosen != null) {
+        target = visibleRectOf(chosen);
+        displayKey = displayKeyOf(chosen);
+      }
     } catch (_) {
       // Sin pantallas legibles se proyecta donde está el panel.
     }
+
+    _stageDisplayKey = displayKey;
+    _stageFullscreen = target != null;
+    _degradedToWindow = false;
 
     // Primero se enseña el reloj y después se coloca la ventana: al revés, un
     // fallo al colocarla dejaría al operador sin escenario y sin saber por qué.
@@ -288,8 +432,7 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
 
     _controller = null;
     _process = null;
-    _pushFailures = 0;
-    state = const StageWindowStatus();
+    _reset();
 
     if (embedded) {
       await _restorePanelBounds();
@@ -335,6 +478,11 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
 
     try {
       await windowManager.setFullScreen(false);
+      // También aquí sin preguntar: al salir de pantalla completa el sistema
+      // devuelve la ventana al estado que tenía antes, y si estaba maximizada
+      // se quedaría ocupando la pantalla entera e ignoraría la medida que se le
+      // pide debajo.
+      await windowManager.unmaximize();
       await windowManager.setSize(bounds.size);
       await windowManager.setPosition(bounds.topLeft);
     } catch (_) {
@@ -382,7 +530,7 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
       if (_controller != controller) return;
 
       _controller = null;
-      state = const StageWindowStatus();
+      _reset();
     }
   }
 
@@ -422,4 +570,20 @@ class StageWindowNotifier extends Notifier<StageWindowStatus> {
 final stageWindowProvider =
     NotifierProvider<StageWindowNotifier, StageWindowStatus>(
   StageWindowNotifier.new,
+);
+
+/// Aviso del escenario para el operador, de una vez.
+///
+/// Lo usa el escenario cuando algo cambia en la proyección sin que el operador
+/// lo haya pedido —se ha desenchufado la pantalla del reloj—: la ventana se ha
+/// movido sola y, si no se dice nada, parece un fallo.
+class StageNoticeNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void show(String message) => state = message;
+}
+
+final stageNoticeProvider = NotifierProvider<StageNoticeNotifier, String?>(
+  StageNoticeNotifier.new,
 );

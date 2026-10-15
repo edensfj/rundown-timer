@@ -96,6 +96,76 @@ final remoteSnapshotProvider =
 /// proceso: llega por la entrada estándar, como las instantáneas.
 const String stageCloseCommand = 'close';
 
+/// Método (o palabra) con la que el panel mueve la ventana del escenario.
+const String stageWindowCommand = 'window';
+
+/// Clave que distingue una orden de ventana de una instantánea del reloj, que
+/// viaja por el mismo canal.
+const String stageWindowCommandKey = 'cmd';
+
+/// Instrucciones para **cambiar la ventana** del escenario.
+///
+/// Existe por un caso que el sistema no resuelve solo: al **desconectar la
+/// pantalla** del escenario —se unpluga la TV—, el sistema no devuelve la ventana
+/// a su sitio, la recoloca sobre la pantalla que queda y **mantiene el modo
+/// pantalla completa**. El reloj acaba encima del panel del operador, a pantalla
+/// completa y sin poder programarse al lado. Quien puede arreglarlo es el panel,
+/// que es quien sabe qué pantalla se ha ido, así que se lo dice al escenario.
+@immutable
+class StageWindowCommand {
+  const StageWindowCommand({required this.frame, required this.fullscreen});
+
+  /// La ventana normal de siempre.
+  const StageWindowCommand.windowed(this.frame) : fullscreen = false;
+
+  final Rect frame;
+  final bool fullscreen;
+
+  String encode() => jsonEncode(toJson());
+
+  Map<String, dynamic> toJson() => {
+        stageWindowCommandKey: stageWindowCommand,
+        'x': frame.left,
+        'y': frame.top,
+        'width': frame.width,
+        'height': frame.height,
+        'fullscreen': fullscreen,
+      };
+
+  /// `null` si lo recibido no es una orden de ventana: entonces es una
+  /// instantánea del reloj.
+  static StageWindowCommand? tryDecode(String raw) {
+    try {
+      final json = jsonDecode(raw);
+      if (json is! Map) return null;
+      return fromJson(json);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Lo mismo, para cuando la orden llega ya deserializada por el canal del
+  /// plugin en vez de como texto.
+  static StageWindowCommand? fromJson(Map json) {
+    if (json[stageWindowCommandKey] != stageWindowCommand) return null;
+
+    try {
+      return StageWindowCommand(
+        frame: Rect.fromLTWH(
+          (json['x'] as num).toDouble(),
+          (json['y'] as num).toDouble(),
+          (json['width'] as num).toDouble(),
+          (json['height'] as num).toDouble(),
+        ),
+        fullscreen: json['fullscreen'] as bool? ?? false,
+      );
+    } catch (_) {
+      // Orden sin geometría: no hay nada que colocar.
+      return null;
+    }
+  }
+}
+
 /// Monta la ventana del escenario y no vuelve hasta que se cierra.
 ///
 /// Se llama desde `main` cuando los argumentos del motor indican que esta
@@ -119,6 +189,13 @@ Future<void> runStageWindow(
 
       case 'close':
         await windowManager.destroy();
+        return null;
+
+      case stageWindowCommand:
+        final command = StageWindowCommand.fromJson(
+          (call.arguments as Map).cast<dynamic, dynamic>(),
+        );
+        if (command != null) await applyStageWindowCommand(command);
         return null;
 
       default:
@@ -167,10 +244,20 @@ Future<void> runStageProcess(StageWindowArgs args) async {
   );
 }
 
-/// Una línea de la entrada estándar: la orden de cerrar o una instantánea.
+/// Una línea de la entrada estándar: una orden de ventana, la de cerrar o una
+/// instantánea del reloj.
 void _onStageLine(ProviderContainer container, String line) {
   if (line == stageCloseCommand) {
     windowManager.destroy();
+    return;
+  }
+
+  // Las órdenes de ventana viajan por la misma tubería que el reloj, y tienen que
+  // ganar: si se TOMasen por una instantánea, el reloj se quedaría congelado en
+  // el último estado recibido.
+  final command = StageWindowCommand.tryDecode(line);
+  if (command != null) {
+    unawaited(applyStageWindowCommand(command));
     return;
   }
 
@@ -183,6 +270,40 @@ void _onStageLine(ProviderContainer container, String line) {
         .push(CountdownSnapshot.fromJson(data.cast<dynamic, dynamic>()));
   } catch (_) {
     // Una línea ilegible no puede tumbar el reloj: se espera la siguiente.
+  }
+}
+
+/// Deja la ventana del escenario como le han mandado.
+///
+/// Se sale del modo pantalla completa **antes** de colocar nada: mientras siga
+/// activo, el sistema sigue recolocando la ventana por su cuenta, y quitarlo
+/// después dejaría una ventana con la medida de una pantalla que ya no existe.
+Future<void> applyStageWindowCommand(StageWindowCommand command) async {
+  try {
+    await windowManager.setFullScreen(false);
+
+    // Se quita la maximización **sin preguntar**, en vez de consultarla: al
+    // salir de una pantalla completa el sistema devuelve la ventana al estado
+    // que tenía antes —normalmente maximizada—, y una ventana maximizada
+    // **ignora el tamaño** que se le pida después. Es más, el sistema no
+    // responde la verdad: preguntar si estaba maximizada devuelve «no» cuando sí
+    // lo está, que es justo lo que pasaba al desenchufar la TV —el reloj se
+    // quedaba ocupando la pantalla entera del operador sin que nadie le hubiera
+    // pedido maximizarse—, así que aquí no se pregunta: se quita siempre.
+    await windowManager.unmaximize();
+  } catch (_) {
+    // Si el sistema no responde al estado de la ventana, se sigue con la
+    // colocación: es el camino que devuelve el reloj a una ventana normal.
+  }
+
+  await placeWindow(command.frame, fullscreen: command.fullscreen);
+
+  // Colocarla la deja visible; si el sistema la había escondido al recolocarla
+  // tras la desconexión, se enseña otra vez.
+  try {
+    await windowManager.show();
+  } catch (_) {
+    // Si ya está visible, no hay nada que rehacer.
   }
 }
 

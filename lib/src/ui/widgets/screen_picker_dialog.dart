@@ -23,7 +23,7 @@ class ScreenPickerDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final displays = ref.watch(displaysProvider);
-    final selectedId = ref.watch(selectedDisplayProvider);
+    final selectedKey = ref.watch(selectedDisplayProvider);
 
     return AlertDialog(
       title: const Row(
@@ -83,9 +83,11 @@ class ScreenPickerDialog extends ConsumerWidget {
                   itemBuilder: (context, index) => _DisplayTile(
                     display: list[index],
                     index: index,
-                    selected: list[index].id.isNotEmpty &&
-                selectedId != null &&
-                list[index].id == selectedId,
+                    // Por [displayKeyOf], no por el id del sistema: en Linux
+                    // todas las pantallas llegan con el id vacío y ninguna
+                    // podría marcarse nunca. La clave es única por pantalla,
+                    // así que aquí se marca exactamente la elegida.
+                    selected: displayKeyOf(list[index]) == selectedKey,
                   ),
                 ),
               ),
@@ -94,6 +96,13 @@ class ScreenPickerDialog extends ConsumerWidget {
         ),
       ),
       actions: [
+        // La lista ya se refresca sola cada pocos segundos; este botón está para
+        // cuando el operador acaba de enchufar algo y no quiere esperar.
+        TextButton.icon(
+          onPressed: () => ref.invalidate(displaysProvider),
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: const Text('Actualizar'),
+        ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cerrar'),
@@ -129,7 +138,7 @@ class _DisplayTile extends ConsumerWidget {
       child: ListTile(
         onTap: () => ref
             .read(selectedDisplayProvider.notifier)
-            .select(selected ? null : display.id),
+            .select(selected ? null : displayKeyOf(display)),
         leading: Icon(
           selected
               ? Icons.check_circle_rounded

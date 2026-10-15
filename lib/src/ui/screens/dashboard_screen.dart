@@ -29,6 +29,16 @@ class DashboardScreen extends ConsumerWidget {
     final schedule = ref.watch(activeScheduleProvider);
     final rundownState = ref.watch(rundownProvider);
 
+    // El escenario avisa cuando se mueve por su cuenta (al desenchufarse la
+    // pantalla del reloj): si no se dice nada, la ventana que se encoge de golpe
+    // parece un fallo.
+    ref.listen<String?>(stageNoticeProvider, (_, message) {
+      if (message == null) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Rundown'),
@@ -295,15 +305,14 @@ class _ScreenAction extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final count = ref.watch(displaysProvider).value?.length ?? 0;
-    final selectedId = ref.watch(selectedDisplayProvider);
+    final selectedKey = ref.watch(selectedDisplayProvider);
     final active = ref.watch(activeDisplayProvider);
 
     return Tooltip(
       message: active != null
-          ? 'Escenario en esta pantalla: ${active.name ?? 'sin nombre'}'
-          : selectedId != null && selectedId.isNotEmpty
-              ? 'Escenario seleccionado, pero la pantalla ya no está conectada '
-                  '(id: $selectedId)'
+          ? 'Escenario en esta pantalla: ${active.name?.trim().isNotEmpty == true ? active.name!.trim() : 'sin nombre'}'
+          : selectedKey != null && selectedKey.isNotEmpty
+              ? 'Escenario elegido, pero esa pantalla no está conectada ya'
               : count > 1
                   ? 'Escenario en la otra pantalla · $count detectadas'
                   : 'Pantallas conectadas',
@@ -313,10 +322,10 @@ class _ScreenAction extends ConsumerWidget {
           IconButton(
             onPressed: () => ScreenPickerDialog.show(context),
             icon: Icon(
-              active != null || selectedId?.isNotEmpty == true
+              active != null || (selectedKey?.isNotEmpty ?? false)
                   ? Icons.tv_rounded
                   : Icons.tv_off_rounded,
-              color: active != null || selectedId?.isNotEmpty == true
+              color: active != null || (selectedKey?.isNotEmpty ?? false)
                   ? scheme.primary
                   : null,
             ),

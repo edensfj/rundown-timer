@@ -9,8 +9,9 @@ import '../../state/selected_day_provider.dart';
 
 /// Selector horizontal de días del evento, con opción de crear uno nuevo.
 ///
-/// El **toque** selecciona el día; la **pulsación larga** abre su menú
-/// (renombrar o eliminar), para no meter más botones en una ficha tan pequeña.
+/// El **toque** selecciona el día. Su menú (renombrar o eliminar) se abre con
+/// **clic derecho** en el sitio exacto donde se ha pulsado, o con **pulsación
+/// larga** si se usa el dedo: no se meten más botones en una ficha tan pequeña.
 class DaySelector extends ConsumerWidget {
   const DaySelector({
     super.key,
@@ -40,7 +41,10 @@ class DaySelector extends ConsumerWidget {
             day: day,
             selected: day.id == activeDay,
             onTap: () => ref.read(selectedDayProvider.notifier).select(day.id),
+            // Con el dedo no hay clic derecho: la pulsación larga abre lo mismo.
             onLongPress: () => _dayMenu(context, ref, day),
+            onSecondaryTap: (position) =>
+                _dayMenu(context, ref, day, position: position),
           );
         },
       ),
@@ -52,41 +56,37 @@ class DaySelector extends ConsumerWidget {
 enum _DayAction { rename, delete }
 
 /// Menú de un día: renombrar o eliminar.
-Future<void> _dayMenu(BuildContext context, WidgetRef ref, EventDay day) async {
+///
+/// Con [position] se abre como menú contextual en el punto exacto del clic
+/// derecho, que es lo que se espera con un ratón. Sin ella se abre como hoja
+/// inferior, que es lo cómodo con el dedo.
+Future<void> _dayMenu(
+  BuildContext context,
+  WidgetRef ref,
+  EventDay day, {
+  Offset? position,
+}) async {
   final messenger = ScaffoldMessenger.of(context);
   final notifier = ref.read(rundownProvider.notifier);
 
-  final action = await showModalBottomSheet<_DayAction>(
-    context: context,
-    builder: (sheet) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            title: Text(
-              day.name,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-            subtitle: Text(
-              '${day.activities.length} '
-              '${day.activities.length == 1 ? 'actividad' : 'actividades'}',
-            ),
+  final action = position == null
+      ? await showModalBottomSheet<_DayAction>(
+          context: context,
+          builder: (sheet) => SafeArea(child: _DayActionList(day: day)),
+        )
+      : await showMenu<_DayAction>(
+          context: context,
+          // Sale pegado al cursor, sin salirse de la ventana: si el clic fue en
+          // el borde de abajo, el menú crece hacia arriba.
+          position: RelativeRect.fromRect(
+            Rect.fromPoints(position, position),
+            Offset.zero & MediaQuery.sizeOf(context),
           ),
-          const Divider(height: 1),
-          ListTile(
-            leading: const Icon(Icons.edit_outlined),
-            title: const Text('Renombrar'),
-            onTap: () => Navigator.of(sheet).pop(_DayAction.rename),
-          ),
-          ListTile(
-            leading: const Icon(Icons.delete_outline_rounded),
-            title: const Text('Eliminar el día'),
-            onTap: () => Navigator.of(sheet).pop(_DayAction.delete),
-          ),
-        ],
-      ),
-    ),
-  );
+          items: const [
+            PopupMenuItem(value: _DayAction.rename, child: _DayRenameItem()),
+            PopupMenuItem(value: _DayAction.delete, child: _DayDeleteItem()),
+          ],
+        );
 
   if (action == null || !context.mounted) return;
 
@@ -134,18 +134,78 @@ Future<void> _dayMenu(BuildContext context, WidgetRef ref, EventDay day) async {
   }
 }
 
+/// Filas del menú de un día, compartidas por la hoja inferior y el menú
+/// contextual: se escriben una vez para que las dos formas offerscan lo mismo.
+class _DayActionList extends StatelessWidget {
+  const _DayActionList({required this.day});
+
+  final EventDay day;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ListTile(
+          title: Text(
+            day.name,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(
+            '${day.activities.length} '
+            '${day.activities.length == 1 ? 'actividad' : 'actividades'}',
+          ),
+        ),
+        const Divider(height: 1),
+        const _DayRenameItem(),
+        const _DayDeleteItem(),
+      ],
+    );
+  }
+}
+
+class _DayRenameItem extends StatelessWidget {
+  const _DayRenameItem();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.edit_outlined),
+      title: const Text('Renombrar'),
+      onTap: () => Navigator.of(context).pop(_DayAction.rename),
+    );
+  }
+}
+
+class _DayDeleteItem extends StatelessWidget {
+  const _DayDeleteItem();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.delete_outline_rounded),
+      title: const Text('Eliminar el día'),
+      onTap: () => Navigator.of(context).pop(_DayAction.delete),
+    );
+  }
+}
+
 class _DayChip extends StatelessWidget {
   const _DayChip({
     required this.day,
     required this.selected,
     required this.onTap,
     required this.onLongPress,
+    required this.onSecondaryTap,
   });
 
   final EventDay day;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+
+  /// Clic derecho: abre el menú contextual donde se ha pulsado.
+  final void Function(Offset position) onSecondaryTap;
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +225,13 @@ class _DayChip extends StatelessWidget {
           color: selected ? scheme.primary : scheme.outlineVariant,
         ),
       ),
-      child: InkWell(
+      // `InkWell` no dice DÓNDE se ha hecho el clic derecho, y para el menú
+      // contextual hace falta: el `GestureDetector` de fuera captura el punto y
+      // se lo pasa, sin interferir con el toque ni la pulsación larga.
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onSecondaryTapDown: (details) => onSecondaryTap(details.globalPosition),
+        child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(12),
@@ -192,6 +258,7 @@ class _DayChip extends StatelessWidget {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

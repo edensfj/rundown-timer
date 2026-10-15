@@ -53,13 +53,19 @@ class RundownRepository {
     }
   }
 
-  String? loadSelectedDisplayId() => _meta.get(selectedDisplayKey) as String?;
+  /// Clave de la pantalla elegida para el escenario (ver `displayKeyOf`).
+  ///
+  /// Antes se guardaba el identificador del sistema. En Linux ese identificador
+  /// viene vacío en todas las pantallas, así que una elección guardada así no
+  /// distinguía una pantalla de otra y se perdía al reiniciar.
+  String? loadSelectedDisplayKey() =>
+      _meta.get(selectedDisplayKey) as String?;
 
-  Future<void> saveSelectedDisplayId(String? id) async {
-    if (id == null) {
+  Future<void> saveSelectedDisplayKey(String? key) async {
+    if (key == null) {
       await _meta.delete(selectedDisplayKey);
     } else {
-      await _meta.put(selectedDisplayKey, id);
+      await _meta.put(selectedDisplayKey, key);
     }
   }
 

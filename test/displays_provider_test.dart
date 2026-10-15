@@ -24,12 +24,30 @@ const proyector = Display(
 /// El panel está centrado en la pantalla del portátil.
 const panelEnPortatil = Rect.fromLTWH(300, 100, 1300, 900);
 
+/// Las mismas dos pantallas como las ve Linux: sin identificador, solo con el
+/// nombre del conector y dónde están.
+const portatilLinux = Display(
+  id: '',
+  name: 'eDP-1',
+  size: Size(1920, 1034),
+  visiblePosition: Offset.zero,
+  visibleSize: Size(1920, 1034),
+);
+
+const tvLinux = Display(
+  id: '',
+  name: 'HDMI-1',
+  size: Size(1920, 1080),
+  visiblePosition: Offset(1920, 0),
+  visibleSize: Size(1920, 1080),
+);
+
 void main() {
   group('chooseStageDisplay: con dos pantallas', () {
     test('sin elegir ninguna, proyecta en la OTRA pantalla', () {
       final elegida = chooseStageDisplay(
         displays: const [portatil, proyector],
-        selectedId: null,
+        selectedKey: null,
         panelBounds: panelEnPortatil,
       );
 
@@ -40,7 +58,7 @@ void main() {
     test('funciona aunque el orden de la lista venga al revés', () {
       final elegida = chooseStageDisplay(
         displays: const [proyector, portatil],
-        selectedId: null,
+        selectedKey: null,
         panelBounds: panelEnPortatil,
       );
 
@@ -50,7 +68,7 @@ void main() {
     test('si el panel está en el proyector, el escenario va al portátil', () {
       final elegida = chooseStageDisplay(
         displays: const [portatil, proyector],
-        selectedId: null,
+        selectedKey: null,
         panelBounds: const Rect.fromLTWH(2000, 100, 1300, 900),
       );
 
@@ -60,7 +78,7 @@ void main() {
     test('una elección a mano manda sobre la automática', () {
       final elegida = chooseStageDisplay(
         displays: const [portatil, proyector],
-        selectedId: portatil.id,
+        selectedKey: portatil.id,
         panelBounds: panelEnPortatil,
       );
 
@@ -71,7 +89,7 @@ void main() {
     test('si la elegida ya no está conectada, se cae a la otra', () {
       final elegida = chooseStageDisplay(
         displays: const [portatil, proyector],
-        selectedId: 'MONITOR\\VIEJO\\0009',
+        selectedKey: 'MONITOR\\VIEJO\\0009',
         panelBounds: panelEnPortatil,
       );
 
@@ -84,7 +102,7 @@ void main() {
       expect(
         chooseStageDisplay(
           displays: const [portatil],
-          selectedId: null,
+          selectedKey: null,
           panelBounds: panelEnPortatil,
         ),
         isNull,
@@ -97,7 +115,7 @@ void main() {
       expect(
         chooseStageDisplay(
           displays: const [portatil],
-          selectedId: portatil.id,
+          selectedKey: portatil.id,
           panelBounds: panelEnPortatil,
         ),
         isNull,
@@ -108,7 +126,7 @@ void main() {
       expect(
         chooseStageDisplay(
           displays: const [],
-          selectedId: null,
+          selectedKey: null,
           panelBounds: panelEnPortatil,
         ),
         isNull,
@@ -120,7 +138,7 @@ void main() {
     test('sin saber dónde está el panel, se evita la principal', () {
       final elegida = chooseStageDisplay(
         displays: const [portatil, proyector],
-        selectedId: null,
+        selectedKey: null,
         panelBounds: null,
       );
 
@@ -138,13 +156,72 @@ void main() {
       // Una posición de panel imposible: fuera de todas las pantallas.
       final elegida = chooseStageDisplay(
         displays: const [proyector, otra],
-        selectedId: null,
+        selectedKey: null,
         panelBounds: const Rect.fromLTWH(-5000, -5000, 100, 100),
       );
 
       expect(elegida, isNotNull,
           reason: 'con dos pantallas siempre hay que elegir una');
       expect(elegida?.id, proyector.id);
+    });
+  });
+
+  group('pantallas sin identificador (Linux)', () {
+    test('la clave distingue una pantalla de otra por posición y tamaño', () {
+      expect(displayKeyOf(portatilLinux), isNot(displayKeyOf(tvLinux)),
+          reason: 'sin id, la posición es lo único que las separa');
+    });
+
+    test('la clave es estable entre lecturas de la misma pantalla', () {
+      expect(displayKeyOf(portatilLinux), displayKeyOf(portatilLinux));
+    });
+
+    test('cuando hay id, la clave es el id', () {
+      // En Windows sigue mandando el identificador del sistema.
+      expect(displayKeyOf(portatil), portatil.id);
+      expect(displayKeyOf(proyector), proyector.id);
+    });
+
+    test('la pantalla elegida se respeta aunque no haya id', () {
+      // Lo que fallaba: con el id vacío, toda elección se descartaba y el
+      // escenario no iba a la pantalla elegida.
+      final elegida = chooseStageDisplay(
+        displays: const [portatilLinux, tvLinux],
+        selectedKey: displayKeyOf(tvLinux),
+        panelBounds: panelEnPortatil,
+      );
+
+      expect(elegida?.name, tvLinux.name);
+    });
+
+    test('y al revés: elegir el portátil manda sobre la automática', () {
+      final elegida = chooseStageDisplay(
+        displays: const [portatilLinux, tvLinux],
+        selectedKey: displayKeyOf(portatilLinux),
+        panelBounds: panelEnPortatil,
+      );
+
+      expect(elegida?.name, portatilLinux.name);
+    });
+
+    test('sin elegir nada, sigue yendo a la otra pantalla', () {
+      final elegida = chooseStageDisplay(
+        displays: const [portatilLinux, tvLinux],
+        selectedKey: null,
+        panelBounds: panelEnPortatil,
+      );
+
+      expect(elegida?.name, tvLinux.name);
+    });
+
+    test('una clave de una pantalla desconectada no rompe nada', () {
+      final elegida = chooseStageDisplay(
+        displays: const [portatilLinux, tvLinux],
+        selectedKey: '@0,0 1280x720',
+        panelBounds: panelEnPortatil,
+      );
+
+      expect(elegida?.name, tvLinux.name);
     });
   });
 }

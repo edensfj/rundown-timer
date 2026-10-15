@@ -11,7 +11,7 @@ const String metaBoxName = 'rundown_meta';
 
 /// Claves dentro de [metaBoxName].
 const String selectedDayKey = 'selectedDayId';
-const String selectedDisplayKey = 'selectedDisplayId';
+const String selectedDisplayKey = 'selectedDisplayKey';
 
 /// Prepara Hive antes de correr la app.
 ///
