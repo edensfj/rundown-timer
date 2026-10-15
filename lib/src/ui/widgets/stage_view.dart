@@ -5,9 +5,12 @@ import '../../core/app_config.dart';
 import '../../core/time_formatters.dart';
 import '../../models/countdown_phase.dart';
 import '../../models/countdown_snapshot.dart';
+import '../../models/marquee.dart';
+import '../../models/stage_flash.dart';
 import '../../state/clock_provider.dart';
 import '../../state/countdown_provider.dart';
 import 'countdown_display.dart';
+import 'marquee_band.dart';
 import 'next_activity_banner.dart';
 
 /// Por debajo de este alto, el escenario se pinta en modo compacto: cabecera
@@ -38,8 +41,11 @@ class _StageViewState extends ConsumerState<StageView>
     with SingleTickerProviderStateMixin {
   late final AnimationController _alertController;
 
-  /// 0.0 = fondo negro, 1.0 = fondo rojo.
+  /// 0.0 = fondo negro, 1.0 = fondo del color del destello.
   late final Animation<double> _alertPulse;
+
+  /// Recuerda la actividad anterior para cantar el cambio en verde.
+  final StageFlashTracker _flash = StageFlashTracker();
 
   @override
   void initState() {
@@ -57,13 +63,13 @@ class _StageViewState extends ConsumerState<StageView>
     super.dispose();
   }
 
-  /// Sincroniza el parpadeo con la fase. Es idempotente, así que puede
+  /// Sincroniza el parpadeo con el destello. Es idempotente, así que puede
   /// ejecutarse en cada `build` sin efectos duplicados.
-  void _syncAlert(CountdownPhase phase) {
-    if (phase.isAlert && !_alertController.isAnimating) {
+  void _syncFlash(Color? flash) {
+    if (flash != null && !_alertController.isAnimating) {
       _alertController.value = 1.0;
       _alertController.repeat(reverse: true);
-    } else if (!phase.isAlert && _alertController.isAnimating) {
+    } else if (flash == null && _alertController.isAnimating) {
       _alertController.stop();
       _alertController.value = 0.0;
     }
@@ -72,28 +78,33 @@ class _StageViewState extends ConsumerState<StageView>
   @override
   Widget build(BuildContext context) {
     final snapshot = ref.watch(countdownProvider);
+    final marquee = snapshot.marquee;
+    final hasTimer = snapshot.showClock || snapshot.hasActivities;
 
-    // En modo reloj no hay cuenta que echar: solo la hora, a lo grande, sin
-    // cabecera ni parpadeos. Va antes del estado vacío porque el reloj no
-    // necesita actividades.
-    if (snapshot.showClock) {
+    // En modo reloj sin marquesina no hay cuenta que echar: solo la hora, a lo
+    // grande, sin cabecera ni parpadeos. Va antes del estado vacío porque el
+    // reloj no necesita actividades.
+    if (snapshot.showClock && marquee == null) {
       return _StageClock(use24Hour: snapshot.clockUse24Hour);
     }
 
-    _syncAlert(snapshot.phase);
+    // Sin actividades y sin mensaje no hay nada que proyectar.
+    if (!hasTimer && marquee == null) return const _NoActivities();
 
-    if (!snapshot.hasActivities) return const _NoActivities();
+    final flash = _flash.update(snapshot, DateTime.now());
+    _syncFlash(flash);
 
     return Stack(
       children: [
-        // Fondo negro + destello rojo a pantalla completa.
+        // Fondo negro + destello a pantalla completa: rojo al excederse, naranja
+        // en los últimos segundos y verde al cambiar de actividad.
         Positioned.fill(
           child: AnimatedBuilder(
             animation: _alertPulse,
             builder: (context, _) => ColoredBox(
               color: Color.lerp(
                 StageColors.black,
-                StageColors.alert,
+                flash ?? StageColors.black,
                 _alertPulse.value,
               )!,
             ),
@@ -101,10 +112,13 @@ class _StageViewState extends ConsumerState<StageView>
         ),
         SafeArea(
           child: Padding(
-            // Márgenes laterales mínimos: el countdown es lo primero y debe
-            // llegar prácticamente a los bordes. El inferior reserva el hueco
-            // de la barra de controles.
-            padding: const EdgeInsets.fromLTRB(16, 28, 16, 100),
+            padding: marquee == null
+                // Márgenes laterales mínimos: el countdown es lo primero y debe
+                // llegar prácticamente a los bordes.
+                ? const EdgeInsets.fromLTRB(16, 28, 16, 100)
+                // Con marquesina la banda se pega abajo; el reloj se queda
+                // arriba, más pequeño.
+                : const EdgeInsets.fromLTRB(16, 20, 16, 24),
             child: LayoutBuilder(
               builder: (context, constraints) {
                 // Cuando el hueco es pequeño —la vista previa del panel, o una
@@ -115,27 +129,125 @@ class _StageViewState extends ConsumerState<StageView>
                 // se retira el pie.
                 final apretado = constraints.maxHeight < _compactHeight;
 
-                return Column(
-                  children: [
-                    _StageHeader(snapshot: snapshot, compact: apretado),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: CountdownDisplay(
-                        snapshot: snapshot,
-                        alertPulse: _alertPulse,
-                      ),
-                    ),
-                    if (!apretado) ...[
-                      const SizedBox(height: 16),
-                      NextActivityBanner(snapshot: snapshot),
-                    ],
-                  ],
+                if (marquee != null) {
+                  return _WithMarquee(
+                    snapshot: snapshot,
+                    overlay: marquee,
+                    alertPulse: _alertPulse,
+                    compact: apretado,
+                  );
+                }
+
+                return _StageContent(
+                  snapshot: snapshot,
+                  alertPulse: _alertPulse,
+                  compact: apretado,
                 );
               },
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// La zona del reloj: cabecera + cuenta atrás, o solo la hora actual.
+///
+/// Se extrajo para poder dibujarla tanto a pantalla completa como encima de la
+/// marquesina, donde ocupa menos alto y por eso el reloj se ve más pequeño.
+class _StageContent extends StatelessWidget {
+  const _StageContent({
+    required this.snapshot,
+    required this.alertPulse,
+    required this.compact,
+  });
+
+  final CountdownSnapshot snapshot;
+  final Animation<double> alertPulse;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    if (snapshot.showClock) {
+      return _StageClockBody(use24Hour: snapshot.clockUse24Hour);
+    }
+
+    // Sin actividades pero con mensaje: sobre la banda solo queda el negro.
+    if (!snapshot.hasActivities) return const SizedBox.shrink();
+
+    // `stretch`: sin esto el `Column` se encoge al ancho de su contenido y, como
+    // el padre solo lo alinea a la izquierda, todo el reloj queda descentrado
+    // cuando los dígitos no llegan a los bordes (vista previa, ventana bajita).
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _StageHeader(snapshot: snapshot, compact: compact),
+        const SizedBox(height: 16),
+        Expanded(
+          child: CountdownDisplay(snapshot: snapshot, alertPulse: alertPulse),
+        ),
+        if (!compact) ...[
+          const SizedBox(height: 16),
+          NextActivityBanner(snapshot: snapshot),
+        ],
+      ],
+    );
+  }
+}
+
+/// El reloj encogido arriba y la marquesina cruzando abajo.
+///
+/// Es el estado que dura mientras hay un mensaje al aire. En cuanto el pase
+/// termina (el panel quita el mensaje de la instantánea) se vuelve al
+/// [StageView] de siempre y el reloj recupera su tamaño.
+class _WithMarquee extends StatelessWidget {
+  const _WithMarquee({
+    required this.snapshot,
+    required this.overlay,
+    required this.alertPulse,
+    required this.compact,
+  });
+
+  final CountdownSnapshot snapshot;
+  final MarqueeOverlay overlay;
+  final Animation<double> alertPulse;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final prominent = overlay.settings.prominent;
+        final bandFraction = prominent
+            ? AppConfig.marqueeProminentBandFraction
+            : AppConfig.marqueeBandFraction;
+        final bandHeight = constraints.maxHeight * bandFraction;
+        // El alto de letra se mide sobre la banda, no sobre la pantalla entera:
+        // así el texto llena el espacio que se le da, como el reloj.
+        final fontSize = bandHeight * overlay.settings.fontScale;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: _StageContent(
+                snapshot: snapshot,
+                alertPulse: alertPulse,
+                // Protagonista: el reloj se encoge y la cabecera se queda en lo
+                // esencial, que deja sitio al texto. Si no, el reloj se queda
+                // tal cual y el texto pasa por debajo.
+                compact: prominent ? true : compact,
+              ),
+            ),
+            const Divider(height: 1, thickness: 1, color: Color(0x24FFFFFF)),
+            SizedBox(
+              height: bandHeight,
+              child: MarqueeBand(overlay: overlay, fontSize: fontSize),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -152,6 +264,29 @@ class _StageClock extends ConsumerWidget {
   /// Formato 12 h o 24 h, según lo elegido en el panel.
   final bool use24Hour;
 
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ColoredBox(
+      color: StageColors.black,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Center(child: _StageClockBody(use24Hour: use24Hour)),
+        ),
+      ),
+    );
+  }
+}
+
+/// Los dígitos de la hora, sin fondo ni márgenes.
+///
+/// Se separaron para poder reutilizarlos encima de la marquesina, donde el
+/// reloj ocupa menos alto y se ve más pequeño.
+class _StageClockBody extends ConsumerWidget {
+  const _StageClockBody({required this.use24Hour});
+
+  final bool use24Hour;
+
   /// Igual que en [CountdownDisplay]: base enorme y `scaleDown` hasta encajar.
   static const double _baseFontSize = 1000;
 
@@ -162,30 +297,20 @@ class _StageClock extends ConsumerWidget {
         ? TimeFormatters.stageClock(now)
         : TimeFormatters.stageClock12(now);
 
-    return ColoredBox(
-      color: StageColors.black,
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Center(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                text,
-                maxLines: 1,
-                style: const TextStyle(
-                  fontFamily: AppConfig.countdownFontFamily,
-                  fontSize: _baseFontSize,
-                  height: 1.0,
-                  fontWeight: FontWeight.w700,
-                  color: StageColors.white,
-                  // Los segundos cambian cada tick: sin cifras tabulares el
-                  // ancho bailaría y el reloj respiraría.
-                  fontFeatures: [FontFeature.tabularFigures()],
-                ),
-              ),
-            ),
-          ),
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(
+        text,
+        maxLines: 1,
+        style: const TextStyle(
+          fontFamily: AppConfig.countdownFontFamily,
+          fontSize: _baseFontSize,
+          height: 1.0,
+          fontWeight: FontWeight.w700,
+          color: StageColors.white,
+          // Los segundos cambian cada tick: sin cifras tabulares el ancho
+          // bailaría y el reloj respiraría.
+          fontFeatures: [FontFeature.tabularFigures()],
         ),
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 
 import '../models/event_day.dart';
+import '../models/marquee.dart';
 import '../models/rundown_template.dart';
 import 'hive_boxes.dart';
 
@@ -15,11 +16,12 @@ class RundownRepository {
   final Box<dynamic> _meta;
 
   List<EventDay> loadDays() {
-    final days = _days.values
-        .whereType<Map<dynamic, dynamic>>()
-        .map(EventDay.fromJson)
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final days =
+        _days.values
+            .whereType<Map<dynamic, dynamic>>()
+            .map(EventDay.fromJson)
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
     return days;
   }
 
@@ -58,8 +60,7 @@ class RundownRepository {
   /// Antes se guardaba el identificador del sistema. En Linux ese identificador
   /// viene vacío en todas las pantallas, así que una elección guardada así no
   /// distinguía una pantalla de otra y se perdía al reiniciar.
-  String? loadSelectedDisplayKey() =>
-      _meta.get(selectedDisplayKey) as String?;
+  String? loadSelectedDisplayKey() => _meta.get(selectedDisplayKey) as String?;
 
   Future<void> saveSelectedDisplayKey(String? key) async {
     if (key == null) {
@@ -83,6 +84,32 @@ class RundownRepository {
       _templates.put(template.id, template.toJson());
 
   Future<void> deleteTemplate(String id) => _templates.delete(id);
+
+  // --- Marquesina -----------------------------------------------------------
+
+  /// Ajustes de la banda. Si nunca se guardaron, los de fábrica.
+  MarqueeSettings loadMarqueeSettings() {
+    final raw = _meta.get(marqueeSettingsKey);
+    if (raw is! Map) return const MarqueeSettings();
+    return MarqueeSettings.fromJson(raw.cast<dynamic, dynamic>());
+  }
+
+  Future<void> saveMarqueeSettings(MarqueeSettings settings) =>
+      _meta.put(marqueeSettingsKey, settings.toJson());
+
+  /// El chat de la marquesina: los mensajes ya enviados, del más nuevo al más
+  /// viejo, para poder reenviarlos.
+  List<MarqueeMessage> loadMarqueeMessages() {
+    final raw = _meta.get(marqueeMessagesKey);
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => MarqueeMessage.fromJson(e.cast<dynamic, dynamic>()))
+        .toList();
+  }
+
+  Future<void> saveMarqueeMessages(List<MarqueeMessage> messages) =>
+      _meta.put(marqueeMessagesKey, messages.map((m) => m.toJson()).toList());
 }
 
 /// Las cajas se abren en `main()` antes de `runApp`, por lo que este provider

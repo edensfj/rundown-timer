@@ -27,7 +27,9 @@ final activeDayProvider = Provider<EventDay?>((ref) {
 });
 
 /// Id del día actualmente en edición (o `null` si no hay días).
-final activeDayIdProvider = Provider<String?>((ref) => ref.watch(activeDayProvider)?.id);
+final activeDayIdProvider = Provider<String?>(
+  (ref) => ref.watch(activeDayProvider)?.id,
+);
 
 /// Identifica **de dónde sale lo que se está proyectando**: el itinerario del
 /// día o un contador suelto.
@@ -41,11 +43,27 @@ final stageSourceIdProvider = Provider<String?>((ref) {
   return 'day:${ref.watch(activeDayProvider)?.id}';
 });
 
-/// Cronograma que se está proyectando, con las horas de fin ya inferidas.
+/// Cronograma del **día** que se está editando, con las horas de fin inferidas.
 ///
-/// Con un contador rápido activo se construye un **cronograma virtual de una
-/// sola actividad**: así todo el motor del escenario (countdown, fases, alerta
-/// roja, pausa, reinicio) funciona igual sin duplicar una línea de lógica.
+/// Es lo que pinta la lista del panel: no lo toca el contador rápido, que es
+/// algo suelto y no forma parte del programa del día. Si un contador rápido
+/// activo cambiara esta lista, la programación del día parecería borrada.
+final dayScheduleProvider = Provider<List<ScheduledActivity>>((ref) {
+  final day = ref.watch(activeDayProvider);
+  if (day == null) return const [];
+
+  return resolveSchedule(
+    day.activities,
+    lastDuration: AppConfig.defaultLastActivityDuration,
+  );
+});
+
+/// Cronograma que se está **proyectando**: el del día, o el contador rápido.
+///
+/// Con un contador rápido activo se construye un cronograma virtual de una sola
+/// actividad: así todo el motor del escenario (countdown, fases, alerta roja,
+/// pausa, reinicio) funciona igual sin duplicar una línea de lógica. Ojo: esto
+/// es solo para el escenario; la lista del panel usa [dayScheduleProvider].
 final activeScheduleProvider = Provider<List<ScheduledActivity>>((ref) {
   final quick = ref.watch(quickTimerProvider);
 
@@ -61,13 +79,7 @@ final activeScheduleProvider = Provider<List<ScheduledActivity>>((ref) {
     ]);
   }
 
-  final day = ref.watch(activeDayProvider);
-  if (day == null) return const [];
-
-  return resolveSchedule(
-    day.activities,
-    lastDuration: AppConfig.defaultLastActivityDuration,
-  );
+  return ref.watch(dayScheduleProvider);
 });
 
 /// Estado de cada actividad (pasada / en curso / futura) en el instante actual.
@@ -75,10 +87,11 @@ final activeScheduleProvider = Provider<List<ScheduledActivity>>((ref) {
 /// Se recalcula cada segundo porque depende del reloj, pero su valor solo
 /// cambia cuando algún estado cambia de verdad: las tarjetas observan una
 /// única entrada con `select`.
+///
+/// Va sobre el cronograma **del día**: las tarjetas de la lista son las del
+/// programa, no el contador rápido.
 final activityStatusProvider = Provider<Map<String, ActivityStatus>>((ref) {
   final now = ref.watch(clockProvider);
-  final schedule = ref.watch(activeScheduleProvider);
-  return {
-    for (final slot in schedule) slot.item.id: slot.statusAt(now),
-  };
+  final schedule = ref.watch(dayScheduleProvider);
+  return {for (final slot in schedule) slot.item.id: slot.statusAt(now)};
 });

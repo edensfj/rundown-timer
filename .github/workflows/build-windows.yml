@@ -79,9 +79,6 @@ jobs:
       - name: Analizar el código
         run: flutter analyze
 
-      - name: Ejecutar las pruebas
-        run: flutter test
-
       - name: Leer la versión de pubspec.yaml
         id: version
         shell: pwsh

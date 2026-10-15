@@ -25,7 +25,18 @@ class AppConfig {
 
   /// Tipografía condensada del countdown. Al ser estrecha, los mismos dígitos
   /// caben más altos en pantalla: es lo que hace que el reloj domine la vista.
+  ///
+  /// La marquesina usa la misma: así la banda y el reloj parecen del mismo
+  /// cartel.
   static const String countdownFontFamily = 'Oswald';
+
+  /// Alto de la banda de la marquesina cuando el texto va **debajo del reloj**,
+  /// como una franja fina, sin quitarle sitio.
+  static const double marqueeBandFraction = 0.16;
+
+  /// Alto de la banda cuando el texto es el **protagonista**: se lleva la mayor
+  /// parte de la pantalla y el reloj se encoge arriba a un contador pequeño.
+  static const double marqueeProminentBandFraction = 0.62;
 
   /// Tamaño de la ventana que simula el escenario cuando **no** hay una pantalla
   /// externa elegida. Proporción 16:9, igual que un proyector.

@@ -50,6 +50,14 @@ class StageColors {
 
   /// Rojo intenso para texto y bordes en estado de alerta.
   static const Color alertAccent = Color(0xFFFF1744);
+
+  /// Verde del destello al **cambiar de actividad**: avisa de que ya está al
+  /// aire la siguiente.
+  static const Color change = Color(0xFF00A64F);
+
+  /// Naranja del destello en los **últimos segundos** de una actividad: es el
+  /// aviso de que está a punto de terminar.
+  static const Color ending = Color(0xFFFF8C00);
 }
 
 extension CountdownPhaseStyle on CountdownPhase {
@@ -62,12 +70,12 @@ extension CountdownPhaseStyle on CountdownPhase {
 
   /// Color de acento: badge, barra de progreso e iconos.
   Color get accent => switch (this) {
-        CountdownPhase.preShow => const Color(0xFF60A5FA),
-        CountdownPhase.normal => const Color(0xFF22C55E),
-        CountdownPhase.warning => const Color(0xFFFBBF24),
-        CountdownPhase.overtime => StageColors.alertAccent,
-        CountdownPhase.finished => const Color(0xFF34D399),
-      };
+    CountdownPhase.preShow => const Color(0xFF60A5FA),
+    CountdownPhase.normal => const Color(0xFF22C55E),
+    CountdownPhase.warning => const Color(0xFFFBBF24),
+    CountdownPhase.overtime => StageColors.alertAccent,
+    CountdownPhase.finished => const Color(0xFF34D399),
+  };
 
   /// `true` si esta fase activa la alerta parpadeante.
   bool get isAlert => this == CountdownPhase.overtime;

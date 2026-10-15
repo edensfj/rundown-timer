@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'countdown_phase.dart';
+import 'marquee.dart';
 import 'scheduled_activity.dart';
 
 /// Instantánea inmutable que la UI del modo escenario necesita para pintarse.
@@ -23,12 +24,14 @@ class CountdownSnapshot {
     this.startTime,
     this.showClock = false,
     this.clockUse24Hour = true,
+    this.marquee,
   });
 
   /// Sin actividades: la pantalla muestra un estado vacío.
   const CountdownSnapshot.empty({
     this.showClock = false,
     this.clockUse24Hour = true,
+    this.marquee,
   }) : current = null,
        next = null,
        index = 0,
@@ -81,6 +84,14 @@ class CountdownSnapshot {
   /// Formato del reloj cuando [showClock] es `true`: 24 h por defecto.
   final bool clockUse24Hour;
 
+  /// Mensaje de marquesina al aire, si lo hay.
+  ///
+  /// Cuando llega, el escenario encoge el reloj arriba y hace cruzar el texto
+  /// por la franja de abajo. Al terminar el pase, esta vuelve a ser `null` y el
+  /// reloj recupera su tamaño: por eso el campo viaja en la instantánea, como
+  /// el modo reloj.
+  final MarqueeOverlay? marquee;
+
   bool get hasActivities => current != null;
 
   bool get isLast => next == null;
@@ -128,6 +139,7 @@ class CountdownSnapshot {
     'startTime': startTime?.toIso8601String(),
     'showClock': showClock,
     'clockUse24Hour': clockUse24Hour,
+    'marquee': marquee?.toJson(),
   };
 
   factory CountdownSnapshot.fromJson(Map<dynamic, dynamic> json) =>
@@ -147,7 +159,13 @@ class CountdownSnapshot {
         startTime: _readDate(json['startTime']),
         showClock: json['showClock'] as bool? ?? false,
         clockUse24Hour: json['clockUse24Hour'] as bool? ?? true,
+        marquee: _readMarquee(json['marquee']),
       );
+
+  static MarqueeOverlay? _readMarquee(Object? value) {
+    if (value is! Map) return null;
+    return MarqueeOverlay.fromJson(value.cast<dynamic, dynamic>());
+  }
 
   static ScheduledActivity? _readActivity(Object? value) {
     if (value is! Map) return null;
@@ -184,7 +202,8 @@ class CountdownSnapshot {
           other.isQuickTimer == isQuickTimer &&
           other.startTime == startTime &&
           other.showClock == showClock &&
-          other.clockUse24Hour == clockUse24Hour;
+          other.clockUse24Hour == clockUse24Hour &&
+          other.marquee?.runId == marquee?.runId;
 
   @override
   int get hashCode => Object.hash(
@@ -201,5 +220,6 @@ class CountdownSnapshot {
     startTime,
     showClock,
     clockUse24Hour,
+    marquee?.runId,
   );
 }

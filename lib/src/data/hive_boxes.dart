@@ -12,6 +12,8 @@ const String metaBoxName = 'rundown_meta';
 /// Claves dentro de [metaBoxName].
 const String selectedDayKey = 'selectedDayId';
 const String selectedDisplayKey = 'selectedDisplayKey';
+const String marqueeSettingsKey = 'marqueeSettings';
+const String marqueeMessagesKey = 'marqueeMessages';
 
 /// Prepara Hive antes de correr la app.
 ///

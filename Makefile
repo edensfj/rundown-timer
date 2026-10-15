@@ -30,6 +30,10 @@ build:
 	flutter build linux --release
 
 install: build
+	@echo "Cerrando Rundown Timer si está en ejecución..."
+	pkill -x rundown-timer 2>/dev/null || true
+	pkill -x rundown 2>/dev/null || true
+	@sleep 1
 	mkdir -p "$(APPDIR)" "$(PREFIX)/bin" "$(PREFIX)/share/applications" "$(PREFIX)/share/metainfo"
 	cp -a "$(BUNDLE)/." "$(APPDIR)/"
 	chmod 755 "$(APPDIR)/rundown"

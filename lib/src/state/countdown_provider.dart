@@ -4,6 +4,7 @@ import '../models/countdown_phase.dart';
 import '../models/countdown_snapshot.dart';
 import '../models/scheduled_activity.dart';
 import 'clock_provider.dart';
+import 'marquee_provider.dart';
 import 'quick_timer_provider.dart';
 import 'run_show_provider.dart';
 import 'schedule_provider.dart';
@@ -26,10 +27,15 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
   final clockUse24Hour =
       ref.watch(stageClockFormatProvider) == StageClockFormat.h24;
 
+  // La marquesina viaja igual: su pase al aire (o su ausencia) cambia la
+  // instantánea y el escenario reacciona sin canal nuevo.
+  final marquee = ref.watch(marqueePlaybackProvider);
+
   if (schedule.isEmpty) {
     return CountdownSnapshot.empty(
       showClock: showClock,
       clockUse24Hour: clockUse24Hour,
+      marquee: marquee,
     );
   }
 
@@ -56,6 +62,7 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
       startTime: first.startTime,
       showClock: showClock,
       clockUse24Hour: clockUse24Hour,
+      marquee: marquee,
     );
   } else {
     index = autoIndex;
@@ -82,6 +89,7 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
       startTime: current.startTime,
       showClock: showClock,
       clockUse24Hour: clockUse24Hour,
+      marquee: marquee,
     );
   }
 
@@ -100,5 +108,6 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
     startTime: current.startTime,
     showClock: showClock,
     clockUse24Hour: clockUse24Hour,
+    marquee: marquee,
   );
 });

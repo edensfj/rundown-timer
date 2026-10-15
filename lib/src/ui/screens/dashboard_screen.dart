@@ -15,6 +15,7 @@ import '../widgets/activity_form_drawer.dart';
 import '../widgets/activity_preview_dialog.dart';
 import '../widgets/day_selector.dart';
 import '../widgets/live_clock_header.dart';
+import '../widgets/marquee_dialog.dart';
 import '../widgets/quick_timer_dialog.dart';
 import '../widgets/screen_picker_dialog.dart';
 import '../widgets/stage_preview_panel.dart';
@@ -28,7 +29,12 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final day = ref.watch(activeDayProvider);
-    final schedule = ref.watch(activeScheduleProvider);
+    // La lista es siempre la del día: un contador rápido no es parte del
+    // programa, así que no cambia lo que se ve aquí.
+    final schedule = ref.watch(dayScheduleProvider);
+    // Lo que se proyecta sí puede ser el contador rápido; el botón de abrir el
+    // escenario depende de eso.
+    final onAir = ref.watch(activeScheduleProvider);
     final rundownState = ref.watch(rundownProvider);
 
     // El escenario avisa cuando se mueve por su cuenta (al desenchufarse la
@@ -49,6 +55,11 @@ class DashboardScreen extends ConsumerWidget {
             onPressed: () => TemplatesDialog.show(context, day: day),
             tooltip: 'Plantillas reutilizables',
             icon: const Icon(Icons.copy_all_outlined),
+          ),
+          IconButton(
+            onPressed: () => MarqueeDialog.show(context),
+            tooltip: 'Marquesina (mensajes en pantalla)',
+            icon: const Icon(Icons.campaign_rounded),
           ),
           IconButton(
             onPressed: () => _addQuickTimer(context, ref),
@@ -145,7 +156,7 @@ class DashboardScreen extends ConsumerWidget {
 
               return FloatingActionButton.extended(
                 heroTag: 'runShow',
-                onPressed: schedule.isEmpty
+                onPressed: onAir.isEmpty
                     ? null
                     : () => _toggleStage(context, ref),
                 icon: Icon(
