@@ -48,7 +48,8 @@ install: build
 
 uninstall:
 	@echo "Cerrando Rundown Timer si está en ejecución..."
-	-pkill -x rundown
+	pkill -x rundown-timer 2>/dev/null || true
+	pkill -x rundown 2>/dev/null || true
 	rm -rf "$(APPDIR)"
 	rm -f "$(PREFIX)/bin/rundown-timer"
 	rm -f "$(PREFIX)/share/applications/com.edens.rundown.desktop"

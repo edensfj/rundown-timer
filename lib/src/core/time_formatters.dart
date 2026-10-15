@@ -12,7 +12,10 @@ class TimeFormatters {
 
   static final DateFormat _time = DateFormat('h:mm a', 'es');
   static final DateFormat _timeWithSeconds = DateFormat('h:mm:ss a', 'es');
-  static final DateFormat _fullDate = DateFormat("EEEE d 'de' MMMM 'de' y", 'es');
+  static final DateFormat _fullDate = DateFormat(
+    "EEEE d 'de' MMMM 'de' y",
+    'es',
+  );
   static final DateFormat _shortDate = DateFormat('EEE d MMM', 'es');
   static final DateFormat _dayName = DateFormat('EEEE', 'es');
 
@@ -20,7 +23,21 @@ class TimeFormatters {
   static String time(DateTime value) => _time.format(value);
 
   /// `10:30:45 a. m.` — para el reloj de la cabecera.
-  static String timeWithSeconds(DateTime value) => _timeWithSeconds.format(value);
+  static String timeWithSeconds(DateTime value) =>
+      _timeWithSeconds.format(value);
+
+  /// `14:05:07` en 24 h — para el modo reloj del escenario.
+  ///
+  /// A propósito sin AM/PM: en la pantalla solo hay dígitos, y en 24 h no hay
+  /// ambigüedad. No usa `intl`: no depende del locale.
+  static String stageClock(DateTime value) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(value.hour)}:${two(value.minute)}:${two(value.second)}';
+  }
+
+  /// `2:05:07 p. m.` — el mismo formato 12 h del resto de la app, para el modo
+  /// reloj cuando el operador lo prefiere así.
+  static String stageClock12(DateTime value) => _timeWithSeconds.format(value);
 
   /// `sábado, 18 de octubre de 2026`
   static String fullDate(DateTime value) => _fullDate.format(value);
@@ -31,18 +48,17 @@ class TimeFormatters {
   /// `sábado`
   static String dayName(DateTime value) => _dayName.format(value);
 
+  /// `miércoles 14` — nombre por defecto de un día: el que sugiere el diálogo
+  /// de creación y el que se usa al crear el día de hoy automáticamente.
+  static String dayLabel(DateTime value) => '${dayName(value)} ${value.day}';
+
   /// Convierte un [DateTime] a medianoche local (sin hora ni minutos).
   static DateTime dateOnly(DateTime value) =>
       DateTime(value.year, value.month, value.day);
 
   /// Coloca una hora concreta sobre la fecha [dayDate].
-  static DateTime at(DateTime dayDate, int hour, int minute) => DateTime(
-        dayDate.year,
-        dayDate.month,
-        dayDate.day,
-        hour,
-        minute,
-      );
+  static DateTime at(DateTime dayDate, int hour, int minute) =>
+      DateTime(dayDate.year, dayDate.month, dayDate.day, hour, minute);
 
   /// Hora de inicio sugerida: la hora actual redondeada hacia arriba al
   /// siguiente bloque de [AppConfig.startTimeRounding], anclada al día del evento.
@@ -51,10 +67,15 @@ class TimeFormatters {
     final slot = AppConfig.startTimeRounding.inMinutes;
     final minutesOfDay = now.hour * 60 + now.minute;
     // El clamp evita que un redondeo a medianoche se salga del día del evento.
-    final rounded =
-        ((minutesOfDay / slot).ceil() * slot).clamp(0, 24 * 60 - slot);
-    return DateTime(dayDate.year, dayDate.month, dayDate.day)
-        .add(Duration(minutes: rounded));
+    final rounded = ((minutesOfDay / slot).ceil() * slot).clamp(
+      0,
+      24 * 60 - slot,
+    );
+    return DateTime(
+      dayDate.year,
+      dayDate.month,
+      dayDate.day,
+    ).add(Duration(minutes: rounded));
   }
 
   /// Formatea el countdown: `MM:SS`, o `H:MM:SS` cuando supera la hora.

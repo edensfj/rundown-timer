@@ -5,6 +5,7 @@ import '../../core/app_config.dart';
 import '../../core/time_formatters.dart';
 import '../../models/countdown_phase.dart';
 import '../../models/countdown_snapshot.dart';
+import '../../state/clock_provider.dart';
 import '../../state/countdown_provider.dart';
 import 'countdown_display.dart';
 import 'next_activity_banner.dart';
@@ -71,6 +72,14 @@ class _StageViewState extends ConsumerState<StageView>
   @override
   Widget build(BuildContext context) {
     final snapshot = ref.watch(countdownProvider);
+
+    // En modo reloj no hay cuenta que echar: solo la hora, a lo grande, sin
+    // cabecera ni parpadeos. Va antes del estado vacío porque el reloj no
+    // necesita actividades.
+    if (snapshot.showClock) {
+      return _StageClock(use24Hour: snapshot.clockUse24Hour);
+    }
+
     _syncAlert(snapshot.phase);
 
     if (!snapshot.hasActivities) return const _NoActivities();
@@ -131,6 +140,58 @@ class _StageViewState extends ConsumerState<StageView>
   }
 }
 
+/// La hora actual, a lo grande, para el modo reloj del escenario.
+///
+/// Sin cabecera, sin parpadeos y sin subtítulos: solo dígitos blancos sobre
+/// negro, con la misma tipografía condensada de la cuenta atrás. Late al ritmo
+/// de [clockProvider], que en la ventana del escenario corre con su propio
+/// temporizador —el modo viaja en la instantánea, los segundos no—.
+class _StageClock extends ConsumerWidget {
+  const _StageClock({required this.use24Hour});
+
+  /// Formato 12 h o 24 h, según lo elegido en el panel.
+  final bool use24Hour;
+
+  /// Igual que en [CountdownDisplay]: base enorme y `scaleDown` hasta encajar.
+  static const double _baseFontSize = 1000;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final now = ref.watch(clockProvider);
+    final text = use24Hour
+        ? TimeFormatters.stageClock(now)
+        : TimeFormatters.stageClock12(now);
+
+    return ColoredBox(
+      color: StageColors.black,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                text,
+                maxLines: 1,
+                style: const TextStyle(
+                  fontFamily: AppConfig.countdownFontFamily,
+                  fontSize: _baseFontSize,
+                  height: 1.0,
+                  fontWeight: FontWeight.w700,
+                  color: StageColors.white,
+                  // Los segundos cambian cada tick: sin cifras tabulares el
+                  // ancho bailaría y el reloj respiraría.
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Cabecera compacta: informa, pero sin robarle sitio al countdown.
 ///
 /// Con [compact] se queda en lo esencial (etiqueta y título) para que quepa en
@@ -154,8 +215,8 @@ class _StageHeader extends StatelessWidget {
           snapshot.isQuickTimer
               ? 'CONTADOR RÁPIDO'
               : snapshot.phase == CountdownPhase.preShow
-                  ? 'PRÓXIMA ACTIVIDAD'
-                  : 'ACTIVIDAD ${snapshot.index + 1} DE ${snapshot.total}',
+              ? 'PRÓXIMA ACTIVIDAD'
+              : 'ACTIVIDAD ${snapshot.index + 1} DE ${snapshot.total}',
           style: theme.textTheme.labelSmall?.copyWith(
             color: const Color(0x66FFFFFF),
             letterSpacing: 3,

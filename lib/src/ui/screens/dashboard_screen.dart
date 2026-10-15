@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ids.dart';
-import '../../data/sample_rundown.dart';
+import '../../core/time_formatters.dart';
 import '../../models/activity_item.dart';
+import '../../models/countdown_snapshot.dart';
 import '../../models/event_day.dart';
 import '../../state/displays_provider.dart';
 import '../../state/rundown_provider.dart';
@@ -11,6 +12,7 @@ import '../../state/schedule_provider.dart';
 import '../../state/ui_state_provider.dart';
 import '../widgets/activity_card.dart';
 import '../widgets/activity_form_drawer.dart';
+import '../widgets/activity_preview_dialog.dart';
 import '../widgets/day_selector.dart';
 import '../widgets/live_clock_header.dart';
 import '../widgets/quick_timer_dialog.dart';
@@ -54,8 +56,7 @@ class DashboardScreen extends ConsumerWidget {
             icon: const Icon(Icons.timer_outlined),
           ),
           IconButton(
-            onPressed: () =>
-                ref.read(previewVisibleProvider.notifier).toggle(),
+            onPressed: () => ref.read(previewVisibleProvider.notifier).toggle(),
             tooltip: ref.watch(previewVisibleProvider)
                 ? 'Ocultar la vista previa'
                 : 'Ver lo que se está presentando',
@@ -75,42 +76,42 @@ class DashboardScreen extends ConsumerWidget {
                 if (rundownState.hasError)
                   _ErrorBanner(message: '${rundownState.error}')
                 else
-                  DaySelector(
-                    onAddDay: () => _createDay(context, ref),
-
-                  ),
+                  DaySelector(onAddDay: () => _createDay(context, ref)),
                 Expanded(
                   child: day == null
                       ? const _EmptyState()
                       : schedule.isEmpty
-                          ? _EmptyDay(
-                              day: day,
-                              onAdd: () => _openForm(context, ref, day),
-                            )
-                          : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
-                              itemCount: schedule.length,
-                              separatorBuilder: (_, _) =>
-                                  const SizedBox(height: 10),
-                              itemBuilder: (context, index) {
-                                final slot = schedule[index];
-                                return ActivityCard(
-                                  slot: slot,
-                                  onTap: () => _openForm(
-                                    context,
-                                    ref,
-                                    day,
-                                    existing: slot.item,
-                                  ),
-                                  onDelete: () => _confirmDelete(
-                                    context,
-                                    ref,
-                                    day,
-                                    slot.item,
-                                  ),
-                                );
-                              },
-                            ),
+                      ? _EmptyDay(
+                          day: day,
+                          onAdd: () => _openForm(context, ref, day),
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
+                          itemCount: schedule.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final slot = schedule[index];
+                            return ActivityCard(
+                              slot: slot,
+                              onTap: () => _openForm(
+                                context,
+                                ref,
+                                day,
+                                existing: slot.item,
+                              ),
+                              onDelete: () =>
+                                  _confirmDelete(context, ref, day, slot.item),
+                              onPreview: () => showActivityPreview(
+                                context,
+                                CountdownSnapshot.preview(
+                                  slots: schedule,
+                                  index: index,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ],
             ),
@@ -122,7 +123,9 @@ class DashboardScreen extends ConsumerWidget {
               width: 420,
               decoration: BoxDecoration(
                 border: Border(
-                  left: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                  left: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
                 ),
               ),
               child: StagePreviewPanel(
@@ -164,7 +167,11 @@ class DashboardScreen extends ConsumerWidget {
           const SizedBox(height: 12),
           FloatingActionButton(
             heroTag: 'addActivity',
-            onPressed: day == null ? null : () => _openForm(context, ref, day),
+            // Sin días no hay nada que desactivar: el botón crea el día de
+            // hoy y abre el formulario directamente.
+            onPressed: () => day == null
+                ? _addFirstActivity(context, ref)
+                : _openForm(context, ref, day),
             tooltip: 'Agregar actividad',
             child: const Icon(Icons.add_rounded),
           ),
@@ -189,13 +196,24 @@ class DashboardScreen extends ConsumerWidget {
     final name = await promptForDayName(context, date: date);
     if (name == null || !context.mounted) return;
 
-    await ref.read(rundownProvider.notifier).addDay(
+    await ref
+        .read(rundownProvider.notifier)
+        .addDay(
           name: name,
           date: DateTime(date.year, date.month, date.day),
           id: newId(),
         );
 
     messenger.showSnackBar(SnackBar(content: Text('Día «$name» creado')));
+  }
+
+  /// Sin días, agregar actividad crea el día de hoy y abre el formulario
+  /// encima: programar no exige crear el día a mano antes.
+  Future<void> _addFirstActivity(BuildContext context, WidgetRef ref) async {
+    final day = await ref.read(rundownProvider.notifier).ensureToday();
+    if (!context.mounted) return;
+
+    await _openForm(context, ref, day);
   }
 
   /// Abre el formulario en el drawer lateral y aplica el resultado.
@@ -219,16 +237,20 @@ class DashboardScreen extends ConsumerWidget {
         await notifier.saveActivity(dayId: day.id, item: item);
         messenger.showSnackBar(
           SnackBar(
-            content: Text(existing == null
-                ? 'Actividad «${item.title}» agregada'
-                : 'Actividad actualizada'),
+            content: Text(
+              existing == null
+                  ? 'Actividad «${item.title}» agregada'
+                  : 'Actividad actualizada',
+            ),
           ),
         );
 
       case ActivityDeleted(:final id):
         await notifier.deleteActivity(day.id, id);
         messenger.showSnackBar(
-          SnackBar(content: Text('«${existing?.title ?? 'Actividad'}» eliminada')),
+          SnackBar(
+            content: Text('«${existing?.title ?? 'Actividad'}» eliminada'),
+          ),
         );
 
       case null:
@@ -312,10 +334,10 @@ class _ScreenAction extends ConsumerWidget {
       message: active != null
           ? 'Escenario en esta pantalla: ${active.name?.trim().isNotEmpty == true ? active.name!.trim() : 'sin nombre'}'
           : selectedKey != null && selectedKey.isNotEmpty
-              ? 'Escenario elegido, pero esa pantalla no está conectada ya'
-              : count > 1
-                  ? 'Escenario en la otra pantalla · $count detectadas'
-                  : 'Pantallas conectadas',
+          ? 'Escenario elegido, pero esa pantalla no está conectada ya'
+          : count > 1
+          ? 'Escenario en la otra pantalla · $count detectadas'
+          : 'Pantallas conectadas',
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -356,7 +378,8 @@ class _ScreenAction extends ConsumerWidget {
   }
 }
 
-class _ErrorBanner extends StatelessWidget {  const _ErrorBanner({required this.message});
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
 
   final String message;
 
@@ -398,11 +421,12 @@ class _EmptyState extends ConsumerWidget {
             Text('Sin itinerario todavía', style: theme.textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(
-              'Crea el primer día del evento, o lanza un contador suelto si '
-              'solo necesitas medir un tiempo.',
+              'Crea el primer día con + o con el botón de abajo, o lanza un '
+              'contador suelto si solo necesitas medir un tiempo.',
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: scheme.onSurfaceVariant),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -427,23 +451,12 @@ class _EmptyState extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 28),
-            // Discreto y opcional: la app arranca vacía, pero tener a mano un
-            // itinerario de muestra ayuda a ver el modo escenario funcionando.
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                TextButton.icon(
-                  onPressed: () => TemplatesDialog.show(context),
-                  icon: const Icon(Icons.copy_all_outlined, size: 18),
-                  label: const Text('Plantillas'),
-                ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: () => _cargarEjemplo(context, ref),
-                  icon: const Icon(Icons.auto_stories_outlined, size: 18),
-                  label: const Text('Itinerario de ejemplo'),
-                ),
-              ],
+            // Discreto y opcional: las plantillas guardan programas
+            // reutilizables para no capturar lo mismo cada vez.
+            TextButton.icon(
+              onPressed: () => TemplatesDialog.show(context),
+              icon: const Icon(Icons.copy_all_outlined, size: 18),
+              label: const Text('Plantillas'),
             ),
           ],
         ),
@@ -454,20 +467,11 @@ class _EmptyState extends ConsumerWidget {
   void _crearDia(BuildContext context, WidgetRef ref) {
     final messenger = ScaffoldMessenger.of(context);
     final now = DateTime.now();
-    ref.read(rundownProvider.notifier).addDay(
-          name: 'Día 1',
-          date: DateTime(now.year, now.month, now.day),
-          id: newId(),
-        );
+    final today = DateTime(now.year, now.month, now.day);
+    ref
+        .read(rundownProvider.notifier)
+        .addDay(name: TimeFormatters.dayLabel(today), date: today, id: newId());
     messenger.showSnackBar(const SnackBar(content: Text('Día creado')));
-  }
-
-  Future<void> _cargarEjemplo(BuildContext context, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(context);
-    await ref.read(rundownProvider.notifier).loadDays(buildSampleRundown());
-    messenger.showSnackBar(
-      const SnackBar(content: Text('Itinerario de ejemplo cargado')),
-    );
   }
 }
 
@@ -495,8 +499,9 @@ class _EmptyDay extends StatelessWidget {
             Text(
               'Agrega la primera actividad de «${day.name}».',
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: scheme.onSurfaceVariant),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 20),
             SizedBox(

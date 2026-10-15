@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/ids.dart';
+import '../core/time_formatters.dart';
 import '../data/rundown_repository.dart';
 import '../models/activity_item.dart';
 import '../models/event_day.dart';
@@ -15,10 +17,39 @@ class RundownNotifier extends AsyncNotifier<List<EventDay>> {
     return ref.read(repositoryProvider).loadDays();
   }
 
-  Future<void> addDay({required String name, required DateTime date, required String id}) async {
+  Future<void> addDay({
+    required String name,
+    required DateTime date,
+    required String id,
+  }) async {
     final day = EventDay(id: id, name: name, date: date);
     await _commit([..._days, day]);
     ref.read(selectedDayProvider.notifier).select(day.id);
+  }
+
+  /// Devuelve el día seleccionado, y si no hay ninguno crea el de hoy.
+  ///
+  /// Lo usa el botón de agregar actividad cuando todavía no hay itinerario:
+  /// programar no exige crear el día a mano antes. El día nuevo se llama como
+  /// hoy («miércoles 14») y queda seleccionado, como cualquier día creado.
+  Future<EventDay> ensureToday({DateTime? now, String? id}) async {
+    final days = _days;
+    final selected = selectedDayId;
+    if (selected != null) {
+      for (final day in days) {
+        if (day.id == selected) return day;
+      }
+    }
+
+    final reference = now ?? DateTime.now();
+    final today = DateTime(reference.year, reference.month, reference.day);
+    final created = EventDay(
+      id: id ?? newId(),
+      name: TimeFormatters.dayLabel(today),
+      date: today,
+    );
+    await addDay(name: created.name, date: created.date, id: created.id);
+    return created;
   }
 
   Future<void> renameDay(String dayId, String name) async {
@@ -30,9 +61,9 @@ class RundownNotifier extends AsyncNotifier<List<EventDay>> {
   Future<void> deleteDay(String dayId) async {
     final remaining = _days.where((d) => d.id != dayId).toList();
     if (selectedDayId == dayId) {
-      ref.read(selectedDayProvider.notifier).select(
-            remaining.isEmpty ? null : remaining.first.id,
-          );
+      ref
+          .read(selectedDayProvider.notifier)
+          .select(remaining.isEmpty ? null : remaining.first.id);
     }
     await _commit(remaining);
   }
@@ -65,7 +96,9 @@ class RundownNotifier extends AsyncNotifier<List<EventDay>> {
 
   Future<void> deleteActivity(String dayId, String activityId) async {
     await _commit(
-      _days.map((d) => d.id == dayId ? d.removeActivity(activityId) : d).toList(),
+      _days
+          .map((d) => d.id == dayId ? d.removeActivity(activityId) : d)
+          .toList(),
     );
   }
 
@@ -81,16 +114,6 @@ class RundownNotifier extends AsyncNotifier<List<EventDay>> {
     await _commit(next);
   }
 
-  /// Carga un conjunto de días de golpe, reemplazando lo que hubiera.
-  ///
-  /// Lo usa el botón «cargar itinerario de ejemplo» del estado vacío.
-  Future<void> loadDays(List<EventDay> days) async {
-    await _commit(days);
-    ref.read(selectedDayProvider.notifier).select(
-          days.isEmpty ? null : days.first.id,
-        );
-  }
-
   List<EventDay> get _days => state.value ?? const [];
 
   String? get selectedDayId => ref.read(selectedDayProvider);
@@ -102,8 +125,9 @@ class RundownNotifier extends AsyncNotifier<List<EventDay>> {
   }
 }
 
-final rundownProvider =
-    AsyncNotifierProvider<RundownNotifier, List<EventDay>>(RundownNotifier.new);
+final rundownProvider = AsyncNotifierProvider<RundownNotifier, List<EventDay>>(
+  RundownNotifier.new,
+);
 
 /// Días ordenados por fecha, o lista vacía mientras carga.
 final sortedDaysProvider = Provider<List<EventDay>>((ref) {

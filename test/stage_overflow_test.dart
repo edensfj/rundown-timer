@@ -31,11 +31,11 @@ const double _textScale = 1.3;
 /// la ventana del escenario, para que la prueba cubra el mismo camino.
 
 ActivityItem actividad({DateTime? endTime}) => ActivityItem(
-      id: 'a1',
-      title: 'Contador · 1 min',
-      startTime: DateTime(2026, 10, 14, 16, 36),
-      endTime: endTime,
-    );
+  id: 'a1',
+  title: 'Contador · 1 min',
+  startTime: DateTime(2026, 10, 14, 16, 36),
+  endTime: endTime,
+);
 
 /// El caso del pantallazo: contador rápido de 1 minuto, ya en la fase de aviso
 /// (amarilla) y **sin actividad siguiente**, que es cuando el pie se queda
@@ -67,25 +67,25 @@ CountdownSnapshot contadorRapido({
 /// El caso del pantallazo: una sola actividad, todavía sin empezar, que es
 /// cuando el pie dice «Última actividad del día».
 CountdownSnapshot unicaActividadEnPrevio() => CountdownSnapshot(
-      current: ScheduledActivity(
-        item: ActivityItem(
-          id: 'a1',
-          title: 'ytrytry',
-          startTime: DateTime(2026, 10, 14, 17, 0),
-          endTime: DateTime(2026, 10, 14, 17, 30),
-        ),
-        startTime: DateTime(2026, 10, 14, 17, 0),
-        endTime: DateTime(2026, 10, 14, 17, 30),
-        isLast: true,
-        hasExplicitEnd: true,
-      ),
-      next: null,
-      index: 0,
-      total: 1,
-      remaining: const Duration(minutes: 5, seconds: 24),
-      phase: CountdownPhase.preShow,
+  current: ScheduledActivity(
+    item: ActivityItem(
+      id: 'a1',
+      title: 'ytrytry',
       startTime: DateTime(2026, 10, 14, 17, 0),
-    );
+      endTime: DateTime(2026, 10, 14, 17, 30),
+    ),
+    startTime: DateTime(2026, 10, 14, 17, 0),
+    endTime: DateTime(2026, 10, 14, 17, 30),
+    isLast: true,
+    hasExplicitEnd: true,
+  ),
+  next: null,
+  index: 0,
+  total: 1,
+  remaining: const Duration(minutes: 5, seconds: 24),
+  phase: CountdownPhase.preShow,
+  startTime: DateTime(2026, 10, 14, 17, 0),
+);
 
 Future<void> montarEscenario(
   WidgetTester tester,
@@ -160,6 +160,11 @@ void main() {
       size,
       unicaActividadEnPrevio(),
     );
+    // Y el reloj de hora actual, que no lleva ni cabecera ni pie.
+    casos['reloj de hora actual ($etiqueta)'] = (
+      size,
+      const CountdownSnapshot.empty(showClock: true),
+    );
   }
 
   casos.addAll({
@@ -199,6 +204,10 @@ void main() {
         remaining: const Duration(seconds: 22),
         phase: CountdownPhase.warning,
       ),
+    ),
+    'reloj 12 h, con el marcador más largo (1600x900)': (
+      const Size(1600, 900),
+      const CountdownSnapshot.empty(showClock: true, clockUse24Hour: false),
     ),
   });
 

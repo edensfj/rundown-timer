@@ -21,21 +21,25 @@ class CountdownSnapshot {
     this.isFinished = false,
     this.isQuickTimer = false,
     this.startTime,
+    this.showClock = false,
+    this.clockUse24Hour = true,
   });
 
   /// Sin actividades: la pantalla muestra un estado vacío.
-  const CountdownSnapshot.empty()
-      : current = null,
-        next = null,
-        index = 0,
-        total = 0,
-        remaining = Duration.zero,
-        phase = CountdownPhase.preShow,
-        isPaused = false,
-        isAutomatic = true,
-        isFinished = false,
-        isQuickTimer = false,
-        startTime = null;
+  const CountdownSnapshot.empty({
+    this.showClock = false,
+    this.clockUse24Hour = true,
+  }) : current = null,
+       next = null,
+       index = 0,
+       total = 0,
+       remaining = Duration.zero,
+       phase = CountdownPhase.preShow,
+       isPaused = false,
+       isAutomatic = true,
+       isFinished = false,
+       isQuickTimer = false,
+       startTime = null;
 
   /// Actividad bajo control. En [CountdownPhase.preShow] es la primera.
   final ScheduledActivity? current;
@@ -69,9 +73,41 @@ class CountdownSnapshot {
   /// inicio de la primera actividad durante el pre-show.
   final DateTime? startTime;
 
+  /// `true` cuando el escenario tiene que mostrar la hora actual en vez de la
+  /// cuenta atrás. Viaja en la instantánea para que llegue a la segunda
+  /// ventana (o al proceso aparte de Linux) por el canal de siempre.
+  final bool showClock;
+
+  /// Formato del reloj cuando [showClock] es `true`: 24 h por defecto.
+  final bool clockUse24Hour;
+
   bool get hasActivities => current != null;
 
   bool get isLast => next == null;
+
+  /// Instantánea para previsualizar una actividad concreta como si estuviera
+  /// en curso: lo que vería el público si esa actividad saliera al escenario
+  /// ahora mismo, con su duración completa por delante.
+  ///
+  /// No toca el estado de la ejecución: es solo una foto para el diálogo de
+  /// vista previa de la tarjeta.
+  factory CountdownSnapshot.preview({
+    required List<ScheduledActivity> slots,
+    required int index,
+  }) {
+    assert(slots.isNotEmpty, 'previsualizar exige al menos una actividad');
+    final safe = index.clamp(0, slots.length - 1);
+    final current = slots[safe];
+    return CountdownSnapshot(
+      current: current,
+      next: safe + 1 < slots.length ? slots[safe + 1] : null,
+      index: safe,
+      total: slots.length,
+      remaining: current.endTime.difference(current.startTime),
+      phase: CountdownPhase.normal,
+      startTime: current.startTime,
+    );
+  }
 
   /// Empaqueta la instantánea para enviarla a la ventana del escenario.
   ///
@@ -79,18 +115,20 @@ class CountdownSnapshot {
   /// que lo que se ve proyectado tiene que viajar como datos. Es lo único que
   /// cruza entre las dos ventanas.
   Map<String, dynamic> toJson() => {
-        'current': current?.toJson(),
-        'next': next?.toJson(),
-        'index': index,
-        'total': total,
-        'remainingMs': remaining.inMilliseconds,
-        'phase': phase.name,
-        'isPaused': isPaused,
-        'isAutomatic': isAutomatic,
-        'isFinished': isFinished,
-        'isQuickTimer': isQuickTimer,
-        'startTime': startTime?.toIso8601String(),
-      };
+    'current': current?.toJson(),
+    'next': next?.toJson(),
+    'index': index,
+    'total': total,
+    'remainingMs': remaining.inMilliseconds,
+    'phase': phase.name,
+    'isPaused': isPaused,
+    'isAutomatic': isAutomatic,
+    'isFinished': isFinished,
+    'isQuickTimer': isQuickTimer,
+    'startTime': startTime?.toIso8601String(),
+    'showClock': showClock,
+    'clockUse24Hour': clockUse24Hour,
+  };
 
   factory CountdownSnapshot.fromJson(Map<dynamic, dynamic> json) =>
       CountdownSnapshot(
@@ -107,6 +145,8 @@ class CountdownSnapshot {
         isFinished: json['isFinished'] as bool? ?? false,
         isQuickTimer: json['isQuickTimer'] as bool? ?? false,
         startTime: _readDate(json['startTime']),
+        showClock: json['showClock'] as bool? ?? false,
+        clockUse24Hour: json['clockUse24Hour'] as bool? ?? true,
       );
 
   static ScheduledActivity? _readActivity(Object? value) {
@@ -142,20 +182,24 @@ class CountdownSnapshot {
           other.isAutomatic == isAutomatic &&
           other.isFinished == isFinished &&
           other.isQuickTimer == isQuickTimer &&
-          other.startTime == startTime;
+          other.startTime == startTime &&
+          other.showClock == showClock &&
+          other.clockUse24Hour == clockUse24Hour;
 
   @override
   int get hashCode => Object.hash(
-        current?.item.id,
-        next?.item.id,
-        index,
-        total,
-        remaining,
-        phase,
-        isPaused,
-        isAutomatic,
-        isFinished,
-        isQuickTimer,
-        startTime,
-      );
+    current?.item.id,
+    next?.item.id,
+    index,
+    total,
+    remaining,
+    phase,
+    isPaused,
+    isAutomatic,
+    isFinished,
+    isQuickTimer,
+    startTime,
+    showClock,
+    clockUse24Hour,
+  );
 }

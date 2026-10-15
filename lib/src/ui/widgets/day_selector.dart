@@ -13,10 +13,7 @@ import '../../state/selected_day_provider.dart';
 /// **clic derecho** en el sitio exacto donde se ha pulsado, o con **pulsación
 /// larga** si se usa el dedo: no se meten más botones en una ficha tan pequeña.
 class DaySelector extends ConsumerWidget {
-  const DaySelector({
-    super.key,
-    required this.onAddDay,
-  });
+  const DaySelector({super.key, required this.onAddDay});
 
   final VoidCallback onAddDay;
 
@@ -214,8 +211,9 @@ class _DayChip extends StatelessWidget {
 
     final background = selected ? scheme.primary : scheme.surface;
     final foreground = selected ? scheme.onPrimary : scheme.onSurface;
-    final countColor =
-        selected ? scheme.onPrimary.withValues(alpha: 0.8) : scheme.onSurfaceVariant;
+    final countColor = selected
+        ? scheme.onPrimary.withValues(alpha: 0.8)
+        : scheme.onSurfaceVariant;
 
     return Material(
       color: background,
@@ -232,33 +230,35 @@ class _DayChip extends StatelessWidget {
         behavior: HitTestBehavior.translucent,
         onSecondaryTapDown: (details) => onSecondaryTap(details.globalPosition),
         child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                day.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: foreground,
-                  fontWeight: FontWeight.w600,
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  day.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: foreground,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '${day.activities.length} '
-                '${day.activities.length == 1 ? 'actividad' : 'actividades'}',
-                style: theme.textTheme.labelSmall?.copyWith(color: countColor),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  '${day.activities.length} '
+                  '${day.activities.length == 1 ? 'actividad' : 'actividades'}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: countColor,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -314,7 +314,7 @@ Future<String?> promptForDayName(
   String title = 'Nombre del día',
 }) {
   final controller = TextEditingController(
-    text: initialValue ?? _defaultDayName(date),
+    text: initialValue ?? TimeFormatters.dayLabel(date),
   );
   final formKey = GlobalKey<FormState>();
 
@@ -358,9 +358,4 @@ Future<String?> promptForDayName(
       ],
     ),
   );
-}
-
-String _defaultDayName(DateTime date) {
-  final dayName = TimeFormatters.dayName(date);
-  return '$dayName ${date.day}';
 }

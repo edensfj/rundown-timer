@@ -7,6 +7,7 @@ import 'clock_provider.dart';
 import 'quick_timer_provider.dart';
 import 'run_show_provider.dart';
 import 'schedule_provider.dart';
+import 'stage_mode_provider.dart';
 
 /// Provider derivado que combina reloj + estado de ejecución + cronograma.
 ///
@@ -18,7 +19,19 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
   final run = ref.watch(runShowProvider);
   final isQuickTimer = ref.watch(quickTimerProvider) != null;
 
-  if (schedule.isEmpty) return const CountdownSnapshot.empty();
+  // El modo de proyección va en la instantánea para que viaje al escenario
+  // por el canal de siempre. Al cambiar, la instantánea cambia y el `push`
+  // del controlador la manda sin que haya que avisarle.
+  final showClock = ref.watch(stageModeProvider) == StageMode.clock;
+  final clockUse24Hour =
+      ref.watch(stageClockFormatProvider) == StageClockFormat.h24;
+
+  if (schedule.isEmpty) {
+    return CountdownSnapshot.empty(
+      showClock: showClock,
+      clockUse24Hour: clockUse24Hour,
+    );
+  }
 
   final effectiveNow = run.effectiveNow(now);
 
@@ -41,6 +54,8 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
       isPaused: run.isPaused,
       isQuickTimer: isQuickTimer,
       startTime: first.startTime,
+      showClock: showClock,
+      clockUse24Hour: clockUse24Hour,
     );
   } else {
     index = autoIndex;
@@ -65,6 +80,8 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
       isFinished: true,
       isQuickTimer: isQuickTimer,
       startTime: current.startTime,
+      showClock: showClock,
+      clockUse24Hour: clockUse24Hour,
     );
   }
 
@@ -81,5 +98,7 @@ final countdownProvider = Provider<CountdownSnapshot>((ref) {
     isAutomatic: run.isAutomatic,
     isQuickTimer: isQuickTimer,
     startTime: current.startTime,
+    showClock: showClock,
+    clockUse24Hour: clockUse24Hour,
   );
 });
