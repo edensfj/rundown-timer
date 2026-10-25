@@ -51,10 +51,29 @@ class ActivityCard extends ConsumerWidget {
       ),
     );
 
+    final isLiveDay =
+        ref.watch(stageDayIdProvider) == ref.watch(activeDayIdProvider);
+    // Si el directo va por detrás del guion, la actividad al aire empezó
+    // después de su hora. La tarjeta conserva la hora programada, pero la pinta
+    // en rojo para que no se confunda con la real.
+    final shift = ref.watch(planShiftProvider);
+    final effectiveShift = isLiveDay ? shift : Duration.zero;
+    final isLate = effectiveShift > Duration.zero;
+    final isActive = status == ActivityStatus.active;
+    final actualStart = isActive && effectiveShift != Duration.zero
+        ? slot.startTime.add(effectiveShift)
+        : null;
+    final actualEnd = actualStart == null
+        ? null
+        : slot.endTime.add(effectiveShift);
+
     return _CardBody(
       slot: slot,
       status: status,
       flash: flash,
+      isLate: isLate,
+      actualStart: actualStart,
+      actualEnd: actualEnd,
       onTap: onTap,
       onDelete: onDelete,
       onPreview: onPreview,
@@ -68,6 +87,9 @@ class _CardBody extends StatefulWidget {
     required this.slot,
     required this.status,
     required this.flash,
+    required this.isLate,
+    required this.actualStart,
+    required this.actualEnd,
     required this.onTap,
     required this.onDelete,
     required this.onPreview,
@@ -79,6 +101,15 @@ class _CardBody extends StatefulWidget {
 
   /// Color del aviso del escenario —verde, naranja o rojo— o `null`.
   final Color? flash;
+
+  /// `true` cuando la actividad al aire empezó después de su hora programada.
+  final bool isLate;
+
+  /// Hora real a la que empezó la actividad al aire, si difiere del guion.
+  final DateTime? actualStart;
+
+  /// Hora real a la que termina la actividad al aire, si difiere del guion.
+  final DateTime? actualEnd;
 
   final VoidCallback onTap;
   final VoidCallback onDelete;
@@ -159,6 +190,7 @@ class _CardBodyState extends State<_CardBody> {
                   _TimeColumn(
                     slot: widget.slot,
                     isActive: _isActive,
+                    isLate: widget.isLate,
                     accent: flash,
                   ),
                   const SizedBox(width: 14),
@@ -190,7 +222,8 @@ class _CardBodyState extends State<_CardBody> {
                         ],
                         if (item.responsible != null ||
                             item.location != null ||
-                            item.notice != null) ...[
+                            item.notice != null ||
+                            widget.actualStart != null) ...[
                           const SizedBox(height: 8),
                           Wrap(
                             spacing: 14,
@@ -205,6 +238,20 @@ class _CardBodyState extends State<_CardBody> {
                                 _MetaLine(
                                   icon: Icons.place_outlined,
                                   text: item.location!,
+                                ),
+                              if (widget.actualStart != null)
+                                _MetaLine(
+                                  icon: Icons.play_circle_outline_rounded,
+                                  text:
+                                      'Inicio: '
+                                      '${TimeFormatters.time(widget.actualStart!)}',
+                                ),
+                              if (widget.actualEnd != null)
+                                _MetaLine(
+                                  icon: Icons.flag_outlined,
+                                  text:
+                                      'Fin: '
+                                      '${TimeFormatters.time(widget.actualEnd!)}',
                                 ),
                               if (item.notice != null)
                                 _MetaLine(
@@ -351,10 +398,16 @@ class _GroupButton extends StatelessWidget {
 }
 
 class _TimeColumn extends StatelessWidget {
-  const _TimeColumn({required this.slot, required this.isActive, this.accent});
+  const _TimeColumn({
+    required this.slot,
+    required this.isActive,
+    required this.isLate,
+    this.accent,
+  });
 
   final ScheduledActivity slot;
   final bool isActive;
+  final bool isLate;
 
   /// Color del aviso del escenario, si lo hay: la hora se pone del mismo color
   /// que el borde para que la tarjeta se lea entera como un bloque.
@@ -364,6 +417,13 @@ class _TimeColumn extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    // Solo cuando la duración lleva horas: «30 min» ya está en minutos.
+    final minutes = TimeFormatters.minutesEquivalent(slot.plannedDuration);
+
+    // Al aire, la hora programada se tiñe: rojo si el directo va tarde,
+    // primario si va en hora.
+    final activeColor = accent ?? (isLate ? scheme.error : scheme.primary);
+    final startColor = isActive ? activeColor : scheme.onSurface;
 
     return SizedBox(
       width: 82,
@@ -374,7 +434,7 @@ class _TimeColumn extends StatelessWidget {
             TimeFormatters.time(slot.startTime),
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
-              color: isActive ? (accent ?? scheme.primary) : scheme.onSurface,
+              color: startColor,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
@@ -385,6 +445,17 @@ class _TimeColumn extends StatelessWidget {
               color: scheme.onSurfaceVariant,
             ),
           ),
+          if (minutes != null) ...[
+            const SizedBox(height: 1),
+            Text(
+              minutes,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.primary,
+                fontWeight: FontWeight.w600,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
         ],
       ),
     );

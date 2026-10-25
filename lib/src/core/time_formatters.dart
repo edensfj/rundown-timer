@@ -106,6 +106,16 @@ class TimeFormatters {
     return '$hours h $minutes min';
   }
 
+  /// `105 min` — el equivalente exacto de una duración que lleva horas.
+  ///
+  /// Devuelve `null` cuando [humanDuration] ya se expresa en minutos o
+  /// segundos, para no repetir «45 min» al lado de «45 min».
+  static String? minutesEquivalent(Duration duration) {
+    final totalSeconds = duration.abs().inSeconds;
+    if (totalSeconds < 3600) return null;
+    return '${duration.abs().inMinutes} min';
+  }
+
   /// `+1 h 15 min` / `-15 min`, para indicar retraso o adelanto.
   static String signedHumanDuration(Duration duration) {
     final sign = duration.isNegative ? '-' : '+';
