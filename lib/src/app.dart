@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/app_config.dart';
 import 'ui/screens/dashboard_screen.dart';
-import 'ui/screens/embedded_stage_screen.dart';
+import 'ui/screens/embedded_stage_screen_web.dart'
+    if (dart.library.io) 'ui/screens/embedded_stage_screen.dart';
 import 'ui/theme.dart';
 import 'window/stage_window_controller.dart';
 

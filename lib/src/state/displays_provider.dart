@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 
 import '../data/rundown_repository.dart';
+import 'displays_source_web.dart'
+    if (dart.library.io) 'displays_source_desktop.dart';
 
 /// Cada cuánto se pregunta al sistema si han cambiado las pantallas.
 ///
@@ -33,7 +35,7 @@ final displaysProvider = FutureProvider<List<Display>>((ref) async {
   );
   ref.onDispose(timer.cancel);
 
-  return screenRetriever.getAllDisplays();
+  return getAllDisplays();
 });
 
 /// Pantalla elegida para mostrar el modo escenario.
@@ -93,7 +95,7 @@ String displayKeyOf(Display display) {
 /// También refresca el provider, para que el panel y el diálogo enseñen la misma
 /// lista que se acaba de usar para proyectar.
 Future<List<Display>> readDisplaysNow(Ref ref) async {
-  final displays = await screenRetriever.getAllDisplays();
+  final displays = await getAllDisplays();
   ref.invalidate(displaysProvider);
   return displays;
 }

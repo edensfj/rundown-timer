@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -86,7 +87,7 @@ class DashboardScreen extends ConsumerWidget {
             isSelected: ref.watch(previewVisibleProvider),
             icon: const Icon(Icons.picture_in_picture_alt_rounded),
           ),
-          const _ScreenAction(),
+          if (!kIsWeb) const _ScreenAction(),
           IconButton(
             onPressed: () => AppAboutDialog.show(context),
             tooltip: 'Acerca de Rundown Timer',

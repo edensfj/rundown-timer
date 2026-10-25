@@ -39,6 +39,9 @@ dependencies:
   file_selector: ^1.0.3
   package_info_plus: ^10.2.2
 
+  # Descarga del JSON en la versión web
+  web: ^1.1.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
