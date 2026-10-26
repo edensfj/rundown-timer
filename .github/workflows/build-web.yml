@@ -1,19 +1,11 @@
 name: Build Web
 
-# Compila la versión web, deja el paquete listo para descargar desde Actions y
-# publica una copia en GitHub Pages.
+# Compila la versión web y deja el paquete listo para descargar desde Actions.
 #
 # Flutter no genera un `index.js` ni un `index.css` al uso: el resultado es una
 # carpeta (`build/web`) con `index.html`, `main.dart.js`, `assets/`, `canvaskit/`
 # y el resto de archivos que necesita el navegador. Hay que copiar la carpeta
 # completa y servirla por HTTP; abrir `index.html` con file:// no funciona.
-#
-# Para que el job de Pages funcione, en el repositorio hay que tener:
-#   Settings > Pages > Build and deployment > Source: GitHub Actions
-#
-# El artefacto `rundown-web` se compila con la raíz `/` para poder copiarlo a
-# cualquier servidor. La copia de Pages se compila aparte con el subdirectorio
-# del repositorio (`/nombre-del-repo/`), que es donde GitHub Pages lo publica.
 
 on:
   push:
@@ -37,7 +29,6 @@ jobs:
 
     permissions:
       contents: read
-      pages: write
 
     steps:
       - name: Descargar el código
@@ -56,7 +47,7 @@ jobs:
       - name: Analizar el código
         run: flutter analyze
 
-      - name: Compilar para el artefacto descargable
+      - name: Compilar (release)
         run: flutter build web --release
 
       - name: Adjuntar la carpeta web
@@ -66,55 +57,3 @@ jobs:
           path: build/web/
           if-no-files-found: error
           retention-days: 30
-
-      # La copia de Pages necesita saber en qué subruta se publica. Si el repo
-      # es la página de usuario (`usuario.github.io`), va en la raíz; si no, en
-      # `/<nombre-del-repo>/`.
-      - name: Calcular la ruta de GitHub Pages
-        id: pages
-        run: |
-          repo="${{ github.event.repository.name }}"
-          owner="${{ github.repository_owner }}"
-          if [ "$repo" = "$owner.github.io" ]; then
-            href="/"
-          else
-            href="/$repo/"
-          fi
-          echo "base_href=$href" >> "$GITHUB_OUTPUT"
-          echo "GitHub Pages se publicará en $href"
-
-      - name: Compilar para GitHub Pages
-        run: >
-          flutter build web --release
-          --base-href "${{ steps.pages.outputs.base_href }}"
-
-      - name: Preparar el artefacto de Pages
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: build/web
-
-  deploy-pages:
-    name: Publicar en GitHub Pages
-    needs: build-web
-    if: >-
-      github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    permissions:
-      pages: write
-      id-token: write
-
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    concurrency:
-      group: pages
-      cancel-in-progress: false
-
-    steps:
-      - name: Publicar
-        id: deployment
-        uses: actions/deploy-pages@v4
